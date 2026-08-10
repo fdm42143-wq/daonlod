@@ -93,6 +93,8 @@ def admin_panel(message):
     bot.reply_to(message, admin_text, parse_mode="Markdown", reply_markup=markup)
 
 def format_views(views):
+    if not views:
+        return "0"
     if views >= 1_000_000:
         return f"{views // 1_000_000}M"
     elif views >= 1_000:
@@ -105,9 +107,71 @@ def format_duration(seconds):
     m, s = divmod(int(seconds), 60)
     return f"{m}:{s:02d}"
 
-# معالجة البحث وإرسال النتائج بشكل نصي مع الأوامر الزرقاء القابلة للضغط التلقائي
-@bot.message_handler(func=lambda message: message.text and not message.text.startswith("http") and not message.text.startswith("/dl_") and message.text != "🛠 لوحة تحكم المطور")
-def handle_search(message):
+# معالجة البحث في المجموعات والقنوات عند البدء بكلمة "يوت"
+@bot.message_handler(func=lambda message: message.text and message.text.startswith("يوت ") and message.chat.type in ['group', 'supergroup', 'channel'])
+def handle_group_search(message):
+    query = message.text.replace("يوت ", "", 1).strip()
+    processing_msg = bot.reply_to(message, f"🔍 | جاري البحث والتحميل الفوري لـ: ({query}) ...")
+    
+    thumb_file = None
+    try:
+        s = Search(query)
+        if not s.results:
+            bot.edit_message_text(chat_id=message.chat.id, message_id=processing_msg.message_id, text="❌ لم يتم العثور على نتيجة.")
+            return
+            
+        vid = s.results[0]
+        url = f"https://youtu.be/{vid.video_id}"
+        yt = YouTube(url)
+        safe_title = "".join([c for c in yt.title if c.isalnum() or c.isspace()]).strip() or "media"
+        
+        # تنزيل الغلاف الثابت
+        thumb_res = requests.get(FIXED_THUMB_URL)
+        if thumb_res.status_code == 200:
+            thumb_file = f"fixed_thumb_{vid.video_id}.jpg"
+            with open(thumb_file, 'wb') as tf:
+                tf.write(thumb_res.content)
+
+        # تحميل الملف الصوتي وإرساله مباشرة مع الحقوق والصورة
+        stream = yt.streams.get_audio_only()
+        temp_file = stream.download(filename="temp_grp")
+        filename = f"{safe_title}.mp3"
+        if os.path.exists(temp_file):
+            os.rename(temp_file, filename)
+            
+        if os.path.exists(filename):
+            with open(filename, 'rb') as f:
+                thumb_data = open(thumb_file, 'rb') if thumb_file and os.path.exists(thumb_file) else None
+                bot.send_audio(
+                    message.chat.id, 
+                    f, 
+                    performer=BOT_USERNAME, 
+                    title=yt.title, 
+                    caption=f"• {BOT_USERNAME}",
+                    thumb=thumb_data
+                )
+            os.remove(filename)
+            
+        try:
+            bot.delete_message(message.chat.id, processing_msg.message_id)
+        except:
+            pass
+            
+    except Exception as e:
+        try:
+            bot.edit_message_text(chat_id=message.chat.id, message_id=processing_msg.message_id, text="❌ حدث خطأ أثناء جلب الطلب.")
+        except:
+            pass
+    finally:
+        if thumb_file and os.path.exists(thumb_file):
+            try:
+                os.remove(thumb_file)
+            except:
+                pass
+
+# معالجة البحث في المحادثة الخاصة (بحث كامل مع النتائج والأوامر الزرقاء)
+@bot.message_handler(func=lambda message: message.text and not message.text.startswith("http") and not message.text.startswith("/dl_") and message.text != "🛠 لوحة تحكم المطور" and message.chat.type == 'private')
+def handle_private_search(message):
     query = message.text.strip()
     processing_msg = bot.reply_to(message, f"🔍 | جاري البحث عن: ({query}) ...")
     
@@ -126,16 +190,13 @@ def handle_search(message):
             vid_id = vid.video_id
             duration = format_duration(vid.length)
             views = format_views(vid.views)
-            channel_name = vid.author
+            channel_name = getattr(vid, 'author', 'YouTube')
             
-            # وضع الأوامر بالشكل `/dl_...` لكي يتحول النص إلى رابط أزرق تفاعلي بالضغط المباشر
             response_text += f"{idx}️⃣ 🎬 {vid_title}\n👤 {channel_name}\n⏱ {duration} - 👁 {views}\n📎 /dl_{vid_id}\n\n"
 
-        # زر التالي الشفاف في الأسفل
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("التالي ➡️", callback_data=f"more_{query[:20]}"))
 
-        # حذف رسالة "جاري البحث..."
         try:
             bot.delete_message(message.chat.id, processing_msg.message_id)
         except:
@@ -145,7 +206,7 @@ def handle_search(message):
         
     except Exception as e:
         try:
-            bot.edit_message_text(chat_id=message.chat.id, message_id=processing_msg.message_id, text="❌ حدث خطأ في البحث.")
+            bot.edit_message_text(chat_id=message.chat.id, message_id=processing_msg.message_id, text="❌ حدث خطأ في البحث. تأكد من صحة الكلمة.")
         except:
             pass
 
@@ -195,7 +256,6 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "❌ هذا الزر للمطور فقط", show_alert=True)
             return
 
-    # معالجة زر التالي لجلب النتائج من 6 إلى 10
     if call.data.startswith("more_"):
         bot.answer_callback_query(call.id, "🔍 جاري جلب المزيد من النتائج...")
         query = call.data.replace("more_", "")
@@ -213,12 +273,9 @@ def callback_handler(call):
                 vid_id = vid.video_id
                 duration = format_duration(vid.length)
                 views = format_views(vid.views)
-                channel_name = vid.author
+                channel_name = getattr(vid, 'author', 'YouTube')
                 
                 response_text += f"{idx}️⃣ 🎬 {vid_title}\n👤 {channel_name}\n⏱ {duration} - 👁 {views}\n📎 /dl_{vid_id}\n\n"
-
-            markup = InlineKeyboardMarkup()
-            markup.add(InlineKeyboardButton("⬅️ السابق (إن وجد)", callback_data="none"))
 
             bot.send_message(call.message.chat.id, response_text, parse_mode="Markdown")
         except:
@@ -295,5 +352,5 @@ def callback_handler(call):
                 pass
 
 if __name__ == "__main__":
-    print("البوت يعمل مع الأوامر الزرقاء التفاعلية...")
+    print("البوت يعمل بكامل الميزات وبدون أخطاء...")
     bot.infinity_polling(skip_pending=True)

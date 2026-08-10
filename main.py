@@ -91,25 +91,23 @@ def admin_panel(message):
 
     bot.reply_to(message, admin_text, parse_mode="Markdown", reply_markup=markup)
 
-# معالجة التحميل وتجاوز مشكلة التنسيقات نهائياً
+# الطريقة الجديدة المضمنة بالكامل لتجاوز مشاكل يوتيوب بدون كوكيز
 @bot.message_handler(func=lambda message: message.text and message.text.strip().startswith("http"))
 def handle_download(message):
     url = message.text.strip()
-    processing_msg = bot.reply_to(message, "⏳ | جاري التحميل، يرجى الانتظار...")
+    processing_msg = bot.reply_to(message, "⏳ | جاري التحميل بالطريقة المضمونة، يرجى الانتظار...")
 
-    cookie_path = os.path.join(os.getcwd(), "cookies.txt")
-
-    # تعديل الصيغة لتجنب خطأ التنسيقات غير المتوفرة
     ydl_opts = {
-        'format': 'bestvideo+bestaudio/best',
+        'format': 'best',
         'outtmpl': 'media_file.%(ext)s',
         'noplaylist': True,
         'nocheckcertificate': True,
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'ios'],
+            }
+        },
     }
-    
-    if os.path.exists(cookie_path):
-        ydl_opts['cookiefile'] = cookie_path
 
     filename = None
     try:
@@ -125,7 +123,7 @@ def handle_download(message):
                 else:
                     bot.send_audio(message.chat.id, f, caption=f"• {BOT_USERNAME}.")
         else:
-            raise Exception("لم يتم إنتاج ملف.")
+            raise Exception("لم يتم إنتاج الملف.")
                 
         bot.delete_message(message.chat.id, processing_msg.message_id)
 
@@ -197,5 +195,5 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "❌ هذا الزر للمطور فقط", show_alert=True)
 
 if __name__ == "__main__":
-    print("البوت يعمل الآن بصيغة التحميل المرنة...")
+    print("البوت يعمل بالطريقة الجديدة المستقرة...")
     bot.infinity_polling(skip_pending=True)

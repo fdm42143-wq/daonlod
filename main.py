@@ -1,6 +1,7 @@
 import os
+import requests
 import telebot
-from pytubefix import YouTube
+from pytubefix import YouTube, Search
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from supabase import create_client, Client
 
@@ -23,6 +24,9 @@ if SUPABASE_URL and SUPABASE_KEY:
 BOT_USERNAME = "@awe5Bot"
 DEV_USERNAME = "@toe7e"
 DEV_ADMIN_ID = 5126968608
+
+# رابط صورتك الثابتة المرفوعة على جيت هب:
+FIXED_THUMB_URL = "https://raw.githubusercontent.com/fdm42143-wq/daonlod/main/7bcc85a8907b306cede0cfd79d5af741.jpg"
 
 def get_admin_keyboard():
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
@@ -89,7 +93,6 @@ def admin_panel(message):
 
     bot.reply_to(message, admin_text, parse_mode="Markdown", reply_markup=markup)
 
-# دالة لتحويل التنسيق الأنيق للمشاهدات والوقت
 def format_views(views):
     if views >= 1_000_000:
         return f"{views // 1_000_000}M"
@@ -103,92 +106,20 @@ def format_duration(seconds):
     m, s = divmod(int(seconds), 60)
     return f"{m}:{s:02d}"
 
-# معالجة الروابط المباشرة (تحميل فيديو + بصمة صوتية + ملف صوتي)
-@bot.message_handler(func=lambda message: message.text and (message.text.strip().startswith("http") or message.text.strip().startswith("/dl_")))
-def handle_download(message):
-    text = message.text.strip()
-    
-    # التعامل مع أزرار البحث السريع التي تبدأ بـ /dl_
-    if text.startswith("/dl_"):
-        # استخراج معرف الفيديو الوهمي أو الحقيقي المرتبط بالبحث
-        # في حال تم تخزين الروابط، يمكنك جلب الرابط الحقيقي، هنا سنقوم بمعالجة النص مباشرة
-        url = f"https://youtu.be/{text.replace('/dl_', '')}"
-    else:
-        url = text
-
-    processing_msg = bot.reply_to(message, "⏳ | جاري معالجة التحميل (فيديو وصوت وبصمة)، يرجى الانتظار...")
-
-    video_file = "media_video.mp4"
-    audio_file = "media_audio.mp3"
-    
-    try:
-        yt = YouTube(url)
-        title = yt.title
-        
-        # 1. تحميل الفيديو بأعلى دقة
-        v_stream = yt.streams.get_highest_resolution()
-        if not v_stream:
-            raise Exception("فشل في العثور على دقة فيديو مناسبة.")
-        v_stream.download(filename=video_file)
-
-        # 2. تحميل الصوت وتحويله لـ mp3 للصوتيات والبصمة
-        a_stream = yt.streams.get_audio_only()
-        if a_stream:
-            downloaded_audio = a_stream.download(filename="temp_audio")
-            if os.path.exists(downloaded_audio):
-                os.rename(downloaded_audio, audio_file)
-
-        # إرسال الفيديو
-        if os.path.exists(video_file):
-            with open(video_file, 'rb') as f:
-                bot.send_video(message.chat.id, f, caption=f"🎬 {title}\n• {BOT_USERNAME}")
-
-        # إرسال كملف صوتي (Audio)
-        if os.path.exists(audio_file):
-            with open(audio_file, 'rb') as f:
-                bot.send_audio(message.chat.id, f, caption=f"🎵 {title}\n• {BOT_USERNAME}")
-
-        # إرسال كبصمة صوتية (Voice Note)
-        if os.path.exists(audio_file):
-            with open(audio_file, 'rb') as f:
-                bot.send_voice(message.chat.id, f, caption=f"🎤 بصمة صوتية\n• {BOT_USERNAME}")
-
-        bot.delete_message(message.chat.id, processing_msg.message_id)
-
-    except Exception as e:
-        try:
-            bot.edit_message_text(
-                chat_id=message.chat.id,
-                message_id=processing_msg.message_id,
-                text=f"❌ تعذر التحميل.\nالخطأ: {str(e)[:60]}"
-            )
-        except:
-            pass
-    finally:
-        for f in [video_file, audio_file, "temp_audio"]:
-            if os.path.exists(f):
-                try:
-                    os.remove(f)
-                except:
-                    pass
-
-# نظام البحث بالنصوص مثل "حسام الرسام" بنفس التنسيق المطلوب
-@bot.message_handler(func=lambda message: message.text and not message.text.startswith("http") and message.text != "🛠 لوحة تحكم المطور")
+@bot.message_handler(func=lambda message: message.text and not message.text.startswith("http") and not message.text.startswith("/dl_") and message.text != "🛠 لوحة تحكم المطور")
 def handle_search(message):
     query = message.text.strip()
     processing_msg = bot.reply_to(message, f"🔍 | جاري البحث عن: ({query}) ...")
     
     try:
-        from pytubefix import Search
         s = Search(query)
-        results = s.results[:5]  # جلب أول 5 نتائج
+        results = s.results[:5]
         
         if not results:
             bot.edit_message_text(chat_id=message.chat.id, message_id=processing_msg.message_id, text="❌ لم يتم العثور على نتائج بحث.")
             return
 
         response_text = f"🔍 **نتائج بحث اليوتيوب لـ \"{query}\"**\n\n"
-        markup = InlineKeyboardMarkup()
         
         for vid in results:
             vid_title = vid.title
@@ -198,19 +129,48 @@ def handle_search(message):
             channel_name = vid.author
             
             response_text += f"🎬 {vid_title}\n👤 {channel_name}\n⏱ {duration} - 👁 {views}\n📎 `/dl_{vid_id}`\n\n"
-            markup.add(InlineKeyboardButton(f"تحميل: {vid_title[:25]}...", callback_data=f"dl_vid_{vid_id}"))
-
-        markup.add(InlineKeyboardButton("« التالي", callback_data="next_page_dummy"))
 
         bot.edit_message_text(
             chat_id=message.chat.id,
             message_id=processing_msg.message_id,
             text=response_text,
-            parse_mode="Markdown",
-            reply_markup=markup
+            parse_mode="Markdown"
         )
     except Exception as e:
-        bot.edit_message_text(chat_id=message.chat.id, message_id=processing_msg.message_id, text=f"❌ حدث خطأ في البحث: {str(e)[:40]}")
+        bot.edit_message_text(chat_id=message.chat.id, message_id=processing_msg.message_id, text=f"❌ حدث خطأ في البحث.")
+
+@bot.message_handler(func=lambda message: message.text and (message.text.startswith("http") or message.text.startswith("/dl_")))
+def handle_download_options(message):
+    text = message.text.strip()
+    if text.startswith("/dl_"):
+        url = f"https://youtu.be/{text.replace('/dl_', '')}"
+    else:
+        url = text
+
+    try:
+        yt = YouTube(url)
+        vid_id = yt.video_id
+        title = yt.title
+        duration = format_duration(yt.length)
+        views = format_views(yt.views)
+        
+        caption = f"🎬 {title}\n👤 {BOT_USERNAME}\n⏱ {duration} - 👁 {views}"
+        
+        markup = InlineKeyboardMarkup(row_width=3)
+        markup.add(
+            InlineKeyboardButton("🎬 مقطع فيديو.", callback_data=f"vid_{vid_id}"),
+            InlineKeyboardButton("🎵 ملف صوتي.", callback_data=f"aud_{vid_id}"),
+            InlineKeyboardButton("🎤 بصمة صوتية.", callback_data=f"voi_{vid_id}")
+        )
+        
+        thumbnail_url = yt.thumbnail_url
+        if thumbnail_url:
+            bot.send_photo(message.chat.id, thumbnail_url, caption=caption, reply_markup=markup)
+        else:
+            bot.send_message(message.chat.id, caption, reply_markup=markup)
+            
+    except Exception as e:
+        bot.reply_to(message, f"❌ تعذر جلب معلومات الفيديو.")
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
@@ -227,17 +187,78 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, f"📊 عدد المشتركين الحالي: {users_count}")
         else:
             bot.answer_callback_query(call.id, "❌ هذا الزر للمطور فقط", show_alert=True)
-            
-    elif call.data.startswith("dl_vid_"):
-        vid_id = call.data.replace("dl_vid_", "")
-        url = f"https://youtu.be/{vid_id}"
-        bot.answer_callback_query(call.id, "⏳ جاري بدء التحميل (فيديو وصوت وبصمة)...")
+            return
+
+    data = call.data
+    parts = data.split("_", 1)
+    if len(parts) != 2:
+        return
         
-        # محاكاة إرسال الرابط تلقائياً للتحميل
-        fake_message = call.message
-        fake_message.text = url
-        handle_download(fake_message)
+    action, vid_id = parts[0], parts[1]
+    url = f"https://youtu.be/{vid_id}"
+    
+    bot.answer_callback_query(call.id, "⏳ جاري التحميل بأقصى سرعة...")
+    
+    thumb_file = None
+    try:
+        yt = YouTube(url)
+        safe_title = "".join([c for c in yt.title if c.isalnum() or c.isspace()]).strip() or "media"
+        
+        # تحميل الصورة الثابتة المرفوعة من جيت هب
+        thumb_res = requests.get(FIXED_THUMB_URL)
+        if thumb_res.status_code == 200:
+            thumb_file = f"fixed_thumb_{vid_id}.jpg"
+            with open(thumb_file, 'wb') as tf:
+                tf.write(thumb_res.content)
+
+        if action == "vid":
+            stream = yt.streams.get_highest_resolution()
+            filename = f"{safe_title}.mp4"
+            stream.download(filename=filename)
+            if os.path.exists(filename):
+                with open(filename, 'rb') as f:
+                    bot.send_video(call.message.chat.id, f, caption=f"• {BOT_USERNAME}")
+                os.remove(filename)
+                
+        elif action == "aud":
+            stream = yt.streams.get_audio_only()
+            temp_file = stream.download(filename="temp_a")
+            filename = f"{safe_title}.mp3"
+            if os.path.exists(temp_file):
+                os.rename(temp_file, filename)
+            if os.path.exists(filename):
+                with open(filename, 'rb') as f:
+                    thumb_data = open(thumb_file, 'rb') if thumb_file and os.path.exists(thumb_file) else None
+                    bot.send_audio(
+                        call.message.chat.id, 
+                        f, 
+                        performer=BOT_USERNAME, 
+                        title=yt.title, 
+                        caption=f"• {BOT_USERNAME}",
+                        thumb=thumb_data
+                    )
+                os.remove(filename)
+                
+        elif action == "voi":
+            stream = yt.streams.get_audio_only()
+            temp_file = stream.download(filename="temp_v")
+            filename = f"{safe_title}.ogg"
+            if os.path.exists(temp_file):
+                os.rename(temp_file, filename)
+            if os.path.exists(filename):
+                with open(filename, 'rb') as f:
+                    bot.send_voice(call.message.chat.id, f, caption=f"• {BOT_USERNAME}")
+                os.remove(filename)
+                
+    except Exception as e:
+        bot.send_message(call.message.chat.id, f"❌ حدث خطأ أثناء التحميل.")
+    finally:
+        if thumb_file and os.path.exists(thumb_file):
+            try:
+                os.remove(thumb_file)
+            except:
+                pass
 
 if __name__ == "__main__":
-    print("البوت يعمل بكامل الميزات الجديدة...")
+    print("البوت يعمل مع الغلاف الثابت من جيت هب...")
     bot.infinity_polling(skip_pending=True)

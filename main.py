@@ -25,7 +25,7 @@ BOT_USERNAME = "@awe5Bot"
 DEV_USERNAME = "@toe7e"
 DEV_ADMIN_ID = 5126968608
 
-# رابط صورتك الثابتة المرفوعة على جيت هب:
+# رابط صورتك الثابتة المرفوعة على جيت هب
 FIXED_THUMB_URL = "https://raw.githubusercontent.com/fdm42143-wq/daonlod/main/7bcc85a8907b306cede0cfd79d5af741.jpg"
 
 def get_admin_keyboard():
@@ -120,24 +120,32 @@ def handle_search(message):
             return
 
         response_text = f"🔍 **نتائج بحث اليوتيوب لـ \"{query}\"**\n\n"
+        markup = InlineKeyboardMarkup()
         
-        for vid in results:
+        for idx, vid in enumerate(results, 1):
             vid_title = vid.title
             vid_id = vid.video_id
             duration = format_duration(vid.length)
             views = format_views(vid.views)
             channel_name = vid.author
             
-            response_text += f"🎬 {vid_title}\n👤 {channel_name}\n⏱ {duration} - 👁 {views}\n📎 `/dl_{vid_id}`\n\n"
+            response_text += f"{idx}️⃣ 🎬 {vid_title}\n👤 {channel_name}\n⏱ {duration} - 👁 {views}\n\n"
+            markup.add(InlineKeyboardButton(f"📥 تحميل: {vid_title[:30]}...", callback_data=f"dl_btn_{vid_id}"))
 
-        bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=processing_msg.message_id,
-            text=response_text,
-            parse_mode="Markdown"
-        )
+        markup.add(InlineKeyboardButton("التالي ➡️", callback_data=f"more_{query[:20]}"))
+
+        try:
+            bot.delete_message(message.chat.id, processing_msg.message_id)
+        except:
+            pass
+
+        bot.send_message(message.chat.id, response_text, parse_mode="Markdown", reply_markup=markup)
+        
     except Exception as e:
-        bot.edit_message_text(chat_id=message.chat.id, message_id=processing_msg.message_id, text=f"❌ حدث خطأ في البحث.")
+        try:
+            bot.edit_message_text(chat_id=message.chat.id, message_id=processing_msg.message_id, text="❌ حدث خطأ في البحث.")
+        except:
+            pass
 
 @bot.message_handler(func=lambda message: message.text and (message.text.startswith("http") or message.text.startswith("/dl_")))
 def handle_download_options(message):
@@ -163,11 +171,8 @@ def handle_download_options(message):
             InlineKeyboardButton("🎤 بصمة صوتية.", callback_data=f"voi_{vid_id}")
         )
         
-        thumbnail_url = yt.thumbnail_url
-        if thumbnail_url:
-            bot.send_photo(message.chat.id, thumbnail_url, caption=caption, reply_markup=markup)
-        else:
-            bot.send_message(message.chat.id, caption, reply_markup=markup)
+        # استخدام صورتك الثابتة من جيت هب بدلاً من صورة يوتيوب
+        bot.send_photo(message.chat.id, FIXED_THUMB_URL, caption=caption, reply_markup=markup)
             
     except Exception as e:
         bot.reply_to(message, f"❌ تعذر جلب معلومات الفيديو.")
@@ -189,6 +194,58 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "❌ هذا الزر للمطور فقط", show_alert=True)
             return
 
+    if call.data.startswith("dl_btn_"):
+        vid_id = call.data.replace("dl_btn_", "")
+        bot.answer_callback_query(call.id, "⏳ جلب خيارات التحميل...")
+        url = f"https://youtu.be/{vid_id}"
+        try:
+            yt = YouTube(url)
+            title = yt.title
+            duration = format_duration(yt.length)
+            views = format_views(yt.views)
+            caption = f"🎬 {title}\n👤 {BOT_USERNAME}\n⏱ {duration} - 👁 {views}"
+            
+            markup = InlineKeyboardMarkup(row_width=3)
+            markup.add(
+                InlineKeyboardButton("🎬 مقطع فيديو.", callback_data=f"vid_{vid_id}"),
+                InlineKeyboardButton("🎵 ملف صوتي.", callback_data=f"aud_{vid_id}"),
+                InlineKeyboardButton("🎤 بصمة صوتية.", callback_data=f"voi_{vid_id}")
+            )
+            
+            # استخدام صورتك الثابتة من جيت هب هنا أيضاً عند الضغط على زر التحميل من البحث
+            bot.send_photo(call.message.chat.id, FIXED_THUMB_URL, caption=caption, reply_markup=markup)
+        except:
+            bot.send_message(call.message.chat.id, "❌ حدث خطأ، جرب إرسال الرابط مباشرة.")
+        return
+
+    if call.data.startswith("more_"):
+        bot.answer_callback_query(call.id, "🔍 جاري جلب المزيد من النتائج...")
+        query = call.data.replace("more_", "")
+        try:
+            s = Search(query)
+            results = s.results[5:10]
+            if not results:
+                bot.answer_callback_query(call.id, "❌ لا توجد نتائج أخرى.", show_alert=True)
+                return
+
+            response_text = f"🔍 **المزيد من نتائج بحث اليوتيوب لـ \"{query}\"**\n\n"
+            markup = InlineKeyboardMarkup()
+            
+            for idx, vid in enumerate(results, 6):
+                vid_title = vid.title
+                vid_id = vid.video_id
+                duration = format_duration(vid.length)
+                views = format_views(vid.views)
+                channel_name = vid.author
+                
+                response_text += f"{idx}️⃣ 🎬 {vid_title}\n👤 {channel_name}\n⏱ {duration} - 👁 {views}\n\n"
+                markup.add(InlineKeyboardButton(f"📥 تحميل: {vid_title[:30]}...", callback_data=f"dl_btn_{vid_id}"))
+
+            bot.send_message(call.message.chat.id, response_text, parse_mode="Markdown", reply_markup=markup)
+        except:
+            bot.answer_callback_query(call.id, "❌ حدث خطأ أثناء جلب الصفحة التالية.", show_alert=True)
+        return
+
     data = call.data
     parts = data.split("_", 1)
     if len(parts) != 2:
@@ -204,7 +261,6 @@ def callback_handler(call):
         yt = YouTube(url)
         safe_title = "".join([c for c in yt.title if c.isalnum() or c.isspace()]).strip() or "media"
         
-        # تحميل الصورة الثابتة المرفوعة من جيت هب
         thumb_res = requests.get(FIXED_THUMB_URL)
         if thumb_res.status_code == 200:
             thumb_file = f"fixed_thumb_{vid_id}.jpg"
@@ -260,5 +316,5 @@ def callback_handler(call):
                 pass
 
 if __name__ == "__main__":
-    print("البوت يعمل مع الغلاف الثابت من جيت هب...")
+    print("البوت يعمل بالغلاف الثابت بالكامل...")
     bot.infinity_polling(skip_pending=True)

@@ -91,17 +91,17 @@ def admin_panel(message):
 
     bot.reply_to(message, admin_text, parse_mode="Markdown", reply_markup=markup)
 
-# استقبال الروابط ومعالجتها عبر yt-dlp مع تحديد المسار المطلق لملف الكوكيز
+# معالجة التحميل وتجاوز مشكلة التنسيقات نهائياً
 @bot.message_handler(func=lambda message: message.text and message.text.strip().startswith("http"))
 def handle_download(message):
     url = message.text.strip()
     processing_msg = bot.reply_to(message, "⏳ | جاري التحميل، يرجى الانتظار...")
 
-    # تحديد المسار المطلق لملف الكوكيز لضمان قراءته بشكل صحيح على السيرفر
     cookie_path = os.path.join(os.getcwd(), "cookies.txt")
 
+    # تعديل الصيغة لتجنب خطأ التنسيقات غير المتوفرة
     ydl_opts = {
-        'format': 'best',
+        'format': 'bestvideo+bestaudio/best',
         'outtmpl': 'media_file.%(ext)s',
         'noplaylist': True,
         'nocheckcertificate': True,
@@ -134,7 +134,7 @@ def handle_download(message):
             bot.edit_message_text(
                 chat_id=message.chat.id,
                 message_id=processing_msg.message_id,
-                text=f"❌ تعذر التحميل. جرب رابطاً آخر.\nالخطأ: {str(e)[:50]}"
+                text=f"❌ تعذر التحميل.\nالخطأ: {str(e)[:60]}"
             )
         except:
             pass
@@ -197,5 +197,5 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "❌ هذا الزر للمطور فقط", show_alert=True)
 
 if __name__ == "__main__":
-    print("البوت يعمل الآن مع المسار المطلق للكوكيز...")
+    print("البوت يعمل الآن بصيغة التحميل المرنة...")
     bot.infinity_polling(skip_pending=True)

@@ -13,13 +13,13 @@ if not TOKEN:
 
 bot = telebot.TeleBot(TOKEN)
 
-# اتصال قاعدة البيانات بشكل آمن ومبسط
+# اتصال قاعدة البيانات بشكل آمن ومحمي
 supabase: Client = None
 if SUPABASE_URL and SUPABASE_KEY:
     try:
         supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
     except Exception as e:
-        print(f"خطأ في الاتصال بقاعدة البيانات: {e}")
+        print(f"تنبيه الاتصال بقاعدة البيانات: {e}")
 
 BOT_USERNAME = "@awe5Bot"
 DEV_USERNAME = "@toe7e"
@@ -90,17 +90,19 @@ def admin_panel(message):
 
     bot.reply_to(message, admin_text, parse_mode="Markdown", reply_markup=markup)
 
-# معالجة الروابط والتحميل بطريقة مستقرة
+# معالجة الروابط والتحميل بطريقة متوافقة تماماً مع يوتيوب وباقي المنصات
 @bot.message_handler(func=lambda message: message.text and message.text.strip().startswith("http"))
 def handle_download(message):
     url = message.text.strip()
     processing_msg = bot.reply_to(message, "⏳ | يرجى الانتظار، جاري معالجة التحميل...")
 
+    # إعدادات متطورة لتجنب أخطاء الصيغ المفقودة
     ydl_opts = {
-        'format': 'best',
+        'format': 'best/bestvideo+bestaudio/best',
         'outtmpl': 'media_file.%(ext)s',
         'noplaylist': True,
         'nocheckcertificate': True,
+        'ignoreerrors': False,
     }
 
     filename = None
@@ -120,7 +122,8 @@ def handle_download(message):
 
         if filename and os.path.exists(filename):
             with open(filename, 'rb') as f:
-                if filename.endswith(('.mp4', '.mkv', '.webm', '.mov', '.avi', '.flv', '.webp')):
+                # التحقق من امتداد الملف لإرساله بالطريقة الصحيحة
+                if filename.lower().endswith(('.mp4', '.mkv', '.webm', '.mov', '.avi', '.flv')):
                     bot.send_video(message.chat.id, f, caption=caption_text, reply_markup=markup)
                 else:
                     bot.send_audio(message.chat.id, f, caption=caption_text, reply_markup=markup)
@@ -134,7 +137,7 @@ def handle_download(message):
             bot.edit_message_text(
                 chat_id=message.chat.id,
                 message_id=processing_msg.message_id,
-                text=f"❌ عذراً، فشل التحميل بسبب قيود المنصة.\nالخطأ: {str(e)[:80]}"
+                text=f"❌ عذراً، حدث خطأ أثناء التحميل.\nالخطأ: {str(e)[:100]}"
             )
         except:
             pass
@@ -221,7 +224,7 @@ def callback_handler(call):
         fname = None
         try:
             if action == "send_aud":
-                ydl_opts = {'format': 'bestaudio', 'outtmpl': 'audio.%(ext)s'}
+                ydl_opts = {'format': 'bestaudio/best', 'outtmpl': 'audio.%(ext)s'}
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(url, download=True)
                     fname = ydl.prepare_filename(info)
@@ -229,15 +232,15 @@ def callback_handler(call):
                     bot.send_audio(call.message.chat.id, af, caption=f"• {BOT_USERNAME}")
                 
             elif action == "send_voice":
-                ydl_opts = {'format': 'bestaudio', 'outtmpl': 'voice.%(ext)s'}
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl_opts = {'format': 'bestaudio/best', 'outtmpl': 'voice.%(ext)s'}
+                with yt_dlp.YoutubeDL(ydl_ops if 'ydl_ops' in locals() else ydl_opts) as ydl:
                     info = ydl.extract_info(url, download=True)
                     fname = ydl.prepare_filename(info)
                 with open(fname, 'rb') as vf:
                     bot.send_voice(call.message.chat.id, vf)
                 
             elif action == "send_vid":
-                ydl_opts = {'format': 'best', 'outtmpl': 'video.%(ext)s'}
+                ydl_opts = {'format': 'best/bestvideo+bestaudio/best', 'outtmpl': 'video.%(ext)s'}
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(url, download=True)
                     fname = ydl.prepare_filename(info)
@@ -255,4 +258,4 @@ def callback_handler(call):
 
 if __name__ == "__main__":
     print("البوت يعمل بكفاءة تامة...")
-    bot.infinity_polling(none_stop=True, interval=0)
+    bot.infinity_polling(none_stop=True, interval=0, timeout=20)

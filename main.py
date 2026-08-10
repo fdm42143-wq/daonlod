@@ -91,24 +91,22 @@ def admin_panel(message):
 
     bot.reply_to(message, admin_text, parse_mode="Markdown", reply_markup=markup)
 
-# استقبال الروابط ومعالجتها عبر yt-dlp مع محاكاة أندرويد لتجاوز حظر يوتيوب
+# استقبال الروابط ومعالجتها عبر yt-dlp مع استخدام ملف الكوكيز
 @bot.message_handler(func=lambda message: message.text and message.text.strip().startswith("http"))
 def handle_download(message):
     url = message.text.strip()
     processing_msg = bot.reply_to(message, "⏳ | يرجى الانتظار، جاري معالجة التحميل...")
 
     ydl_opts = {
-        'format': 'bestvideo+bestaudio/best',
+        'format': 'best',
         'outtmpl': 'media_file.%(ext)s',
         'noplaylist': True,
         'nocheckcertificate': True,
-        'merge_output_format': 'mp4',
-        'extractor_args': {
-            'youtube': {
-                'player_client': ['android', 'web']
-            }
-        }
     }
+    
+    # استخدام ملف cookies.txt إذا كان موجوداً في المجلد
+    if os.path.exists("cookies.txt"):
+        ydl_opts['cookiefile'] = "cookies.txt"
 
     filename = None
     try:
@@ -197,5 +195,5 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "❌ هذا الزر للمطور فقط", show_alert=True)
 
 if __name__ == "__main__":
-    print("البوت يعمل الآن مع خيارات التجاوز الحديثة...")
+    print("البوت يعمل الآن مع ملف الكوكيز وقاعدة البيانات...")
     bot.infinity_polling(skip_pending=True)

@@ -1,7 +1,7 @@
 import os
 import telebot
 import yt_dlp
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from supabase import create_client, Client
 
 TOKEN = os.getenv("BOT_TOKEN")
@@ -22,7 +22,13 @@ if SUPABASE_URL and SUPABASE_KEY:
 
 BOT_USERNAME = "@awe5Bot"
 DEV_USERNAME = "@toe7e"
-DEV_ADMIN_ID = 5126968608  # آيدي المطور الخاص بك
+DEV_ADMIN_ID = 5126968608  # آيدي المطور الرقمي الخاص بك
+
+# لوحة مفاتيح المطور الثابتة (تظهر تلقائياً للمطور عند إرسال /start أو الدخول)
+def get_admin_keyboard():
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, persistent=True)
+    markup.add(KeyboardButton("🛠 لوحة تحكم المطور"))
+    return markup
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -51,10 +57,15 @@ def send_welcome(message):
         InlineKeyboardButton("💻 المطور", url=f"https://t.me/{DEV_USERNAME.replace('@','')}")
     )
        
-    bot.reply_to(message, welcome_msg, parse_mode="Markdown", reply_markup=markup)
+    # التحقق إذا كان المستخدم هو المطور لإظهار لوحة المفاتيح الخاصة به
+    if user_id == DEV_ADMIN_ID:
+        bot.reply_to(message, welcome_msg, parse_mode="Markdown", reply_markup=markup)
+        bot.send_message(message.chat.id, "أهلاً بك يا مطور البوت، تم تفعيل لوحة التحكم الخاصة بك.", reply_markup=get_admin_keyboard())
+    else:
+        bot.reply_to(message, welcome_msg, parse_mode="Markdown", reply_markup=markup)
 
-# --- لوحة تحكم المطور ---
-@bot.message_handler(commands=['admin', 'control'])
+# --- لوحة تحكم المطور (عبر الأوامر أو الزر الثابت) ---
+@bot.message_handler(func=lambda message: message.text == "🛠 لوحة تحكم المطور" or message.text in ['/admin', '/control'])
 def admin_panel(message):
     if message.from_user.id != DEV_ADMIN_ID:
         bot.reply_to(message, "❌ عذراً، هذا الأمر مخصص للمطور فقط.")
@@ -88,9 +99,8 @@ def handle_download(message):
     url = message.text.strip()
     processing_msg = bot.reply_to(message, "⏳ | يرجى الانتظار، جاري معالجة التحميل...")
 
-    # خيارات تجاوز حماية البوتات في يوتيوب
     ydl_opts = {
-        'format': 'bestvideo+bestaudio/best',
+        'format': 'best',
         'outtmpl': 'media_file.%(ext)s',
         'noplaylist': True,
         'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
@@ -103,7 +113,7 @@ def handle_download(message):
             
         caption_text = f"• {BOT_USERNAME}."
         
-        # خيارات الأزرار: فيديو، ملف صوتي، بصمة صوتية
+        # أزرار اختيار نوع التحميل (فيديو، صوتي، بصمة)
         markup = InlineKeyboardMarkup()
         markup.add(
             InlineKeyboardButton("🎬 فيديو", callback_data=f"send_vid:{url}"),
@@ -127,13 +137,13 @@ def handle_download(message):
             bot.edit_message_text(
                 chat_id=message.chat.id,
                 message_id=processing_msg.message_id,
-                text=f"❌ عذراً، حظر يوتيوب المؤقت مفعل على السيرفر.\nيرجى تحديث مكتبة yt-dlp أو تجربة رابط آخر."
+                text=f"❌ عذراً، حدث خطأ أثناء التحميل.\nالخطأ: {str(e)[:90]}"
             )
         except:
             pass
 
 # معالجة البحث بالنصوص
-@bot.message_handler(func=lambda message: message.text and not message.text.startswith("http"))
+@bot.message_handler(func=lambda message: message.text and not message.text.startswith("http") and message.text != "🛠 لوحة تحكم المطور")
 def handle_search(message):
     query = message.text.strip()
     processing_msg = bot.reply_to(message, f"🔍 | جاري البحث عن: ({query}) ...")
@@ -183,10 +193,10 @@ def handle_search(message):
         bot.edit_message_text(
             chat_id=message.chat.id,
             message_id=processing_msg.message_id,
-            text="❌ حدث خطأ في محرك البحث بسبب قيود المنصة، جرب إرسال رابط مباشر."
+            text="❌ حدث خطأ في محرك البحث، جرب إرسال رابط مباشر."
         )
 
-# معالجة الأزرار وتحويل الصيغ (فيديو، صوت، بصمة)
+# معالجة الأزرار والتحويلات (فيديو، صوت، بصمة)
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     if call.data == "refresh_stats":
@@ -218,10 +228,11 @@ def callback_handler(call):
                 os.remove(fname)
                 
             elif action == "send_voice":
-                ydl_opts = {'format': 'bestaudio', 'outtmpl': 'voice.%(ext)s', 'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'ogg'}]}
+                ydl_opts = {'format': 'bestaudio', 'outtmpl': 'voice.%(ext)s'}
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(url, download=True)
-                    fname = ydl.prepare_filename(info).rsplit('.', 1)[0] + '.ogg'
+                    fname = ydl.prepare_filename(info)
+                # إرسال كبصمة صوتية (Voice)
                 with open(fname, 'rb') as vf:
                     bot.send_voice(call.message.chat.id, vf)
                 os.remove(fname)

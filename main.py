@@ -13,13 +13,13 @@ if not TOKEN:
 
 bot = telebot.TeleBot(TOKEN)
 
-# اتصال قاعدة البيانات بشكل آمن ومحمي
+# الاتصال بقاعدة بيانات Supabase الخاصة بك
 supabase: Client = None
 if SUPABASE_URL and SUPABASE_KEY:
     try:
         supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
     except Exception as e:
-        print(f"تنبيه الاتصال بقاعدة البيانات: {e}")
+        print(f"خطأ في الاتصال بقاعدة البيانات: {e}")
 
 BOT_USERNAME = "@awe5Bot"
 DEV_USERNAME = "@toe7e"
@@ -90,19 +90,17 @@ def admin_panel(message):
 
     bot.reply_to(message, admin_text, parse_mode="Markdown", reply_markup=markup)
 
-# معالجة الروابط والتحميل بطريقة متوافقة تماماً مع يوتيوب وباقي المنصات
+# استقبال الروابط ومعالجتها
 @bot.message_handler(func=lambda message: message.text and message.text.strip().startswith("http"))
 def handle_download(message):
     url = message.text.strip()
     processing_msg = bot.reply_to(message, "⏳ | يرجى الانتظار، جاري معالجة التحميل...")
 
-    # إعدادات متطورة لتجنب أخطاء الصيغ المفقودة
     ydl_opts = {
-        'format': 'best/bestvideo+bestaudio/best',
+        'format': 'best',
         'outtmpl': 'media_file.%(ext)s',
         'noplaylist': True,
         'nocheckcertificate': True,
-        'ignoreerrors': False,
     }
 
     filename = None
@@ -122,13 +120,12 @@ def handle_download(message):
 
         if filename and os.path.exists(filename):
             with open(filename, 'rb') as f:
-                # التحقق من امتداد الملف لإرساله بالطريقة الصحيحة
-                if filename.lower().endswith(('.mp4', '.mkv', '.webm', '.mov', '.avi', '.flv')):
+                if filename.endswith(('.mp4', '.mkv', '.webm', '.mov', '.avi', '.flv')):
                     bot.send_video(message.chat.id, f, caption=caption_text, reply_markup=markup)
                 else:
                     bot.send_audio(message.chat.id, f, caption=caption_text, reply_markup=markup)
         else:
-            raise Exception("لم يتم العثور على الملف المحمل.")
+            raise Exception("لم يتم العثور على الملف.")
                 
         bot.delete_message(message.chat.id, processing_msg.message_id)
 
@@ -137,7 +134,7 @@ def handle_download(message):
             bot.edit_message_text(
                 chat_id=message.chat.id,
                 message_id=processing_msg.message_id,
-                text=f"❌ عذراً، حدث خطأ أثناء التحميل.\nالخطأ: {str(e)[:100]}"
+                text=f"❌ عذراً، فشل التحميل.\nالخطأ: {str(e)[:70]}"
             )
         except:
             pass
@@ -148,7 +145,7 @@ def handle_download(message):
             except:
                 pass
 
-# معالجة البحث بالنصوص
+# البحث بالنصوص
 @bot.message_handler(func=lambda message: message.text and not message.text.startswith("http") and message.text != "🛠 لوحة تحكم المطور")
 def handle_search(message):
     query = message.text.strip()
@@ -167,7 +164,7 @@ def handle_search(message):
         entries = results.get('entries', [])
         
         if not entries:
-            bot.edit_message_text(chat_id=message.chat.id, message_id=processing_msg.message_id, text="❌ لم يتم العثور على نتائج مطابقة.")
+            bot.edit_message_text(chat_id=message.chat.id, message_id=processing_msg.message_id, text="❌ لم يتم العثور على نتائج.")
             return
 
         response_text = f"🔍 ¦ نتائج البحث لـ \"{query}\"\n\n"
@@ -176,30 +173,12 @@ def handle_search(message):
         for index, entry in enumerate(entries, start=1):
             title = entry.get('title', 'فيديو بدون عنوان')
             vid_id = entry.get('id', '')
-            duration_sec = entry.get('duration', 0)
-            
-            if duration_sec:
-                mins = duration_sec // 60
-                secs = duration_sec % 60
-                duration_str = f"{mins}:{secs:02d}"
-            else:
-                duration_str = "غير معروف"
-            
-            response_text += f"🎬 {title}\n📎 https://youtu.be/{vid_id}\n⏱ {duration_str}\n\n"
+            response_text += f"🎬 {title}\n📎 https://youtu.be/{vid_id}\n\n"
             markup.add(InlineKeyboardButton(f"نتيجة {index}: {title[:30]}...", url=f"https://youtu.be/{vid_id}"))
 
-        bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=processing_msg.message_id,
-            text=response_text,
-            reply_markup=markup
-        )
+        bot.edit_message_text(chat_id=message.chat.id, message_id=processing_msg.message_id, text=response_text, reply_markup=markup)
     except Exception as e:
-        bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=processing_msg.message_id,
-            text="❌ حدث خطأ في محرك البحث، جرب إرسال رابط مباشر."
-        )
+        bot.edit_message_text(chat_id=message.chat.id, message_id=processing_msg.message_id, text="❌ حدث خطأ في البحث.")
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
@@ -219,12 +198,12 @@ def callback_handler(call):
             
     elif call.data.startswith("send_aud:") or call.data.startswith("send_voice:") or call.data.startswith("send_vid:"):
         action, url = call.data.split(":", 1)
-        bot.answer_callback_query(call.id, "⏳ جاري تحضير الطلب...")
+        bot.answer_callback_query(call.id, "⏳ جاري تحضير الملف...")
         
         fname = None
         try:
             if action == "send_aud":
-                ydl_opts = {'format': 'bestaudio/best', 'outtmpl': 'audio.%(ext)s'}
+                ydl_opts = {'format': 'bestaudio', 'outtmpl': 'audio.%(ext)s'}
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(url, download=True)
                     fname = ydl.prepare_filename(info)
@@ -232,15 +211,15 @@ def callback_handler(call):
                     bot.send_audio(call.message.chat.id, af, caption=f"• {BOT_USERNAME}")
                 
             elif action == "send_voice":
-                ydl_opts = {'format': 'bestaudio/best', 'outtmpl': 'voice.%(ext)s'}
-                with yt_dlp.YoutubeDL(ydl_ops if 'ydl_ops' in locals() else ydl_opts) as ydl:
+                ydl_opts = {'format': 'bestaudio', 'outtmpl': 'voice.%(ext)s'}
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(url, download=True)
                     fname = ydl.prepare_filename(info)
                 with open(fname, 'rb') as vf:
                     bot.send_voice(call.message.chat.id, vf)
                 
             elif action == "send_vid":
-                ydl_opts = {'format': 'best/bestvideo+bestaudio/best', 'outtmpl': 'video.%(ext)s'}
+                ydl_opts = {'format': 'best', 'outtmpl': 'video.%(ext)s'}
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(url, download=True)
                     fname = ydl.prepare_filename(info)
@@ -248,7 +227,7 @@ def callback_handler(call):
                     bot.send_video(call.message.chat.id, vf, caption=f"• {BOT_USERNAME}")
                     
         except Exception as ex:
-            bot.send_message(call.message.chat.id, f"❌ حدث خطأ أثناء التحويل: {str(ex)[:60]}")
+            bot.send_message(call.message.chat.id, f"❌ حدث خطأ: {str(ex)[:50]}")
         finally:
             if fname and os.path.exists(fname):
                 try:
@@ -257,5 +236,5 @@ def callback_handler(call):
                     pass
 
 if __name__ == "__main__":
-    print("البوت يعمل بكفاءة تامة...")
-    bot.infinity_polling(none_stop=True, interval=0, timeout=20)
+    print("البوت يعمل...")
+    bot.infinity_polling(none_stop=True)

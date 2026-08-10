@@ -13,6 +13,7 @@ if not TOKEN:
 
 bot = telebot.TeleBot(TOKEN)
 
+# اتصال قاعدة البيانات بشكل آمن وسليم
 supabase: Client = None
 if SUPABASE_URL and SUPABASE_KEY:
     try:
@@ -22,11 +23,11 @@ if SUPABASE_URL and SUPABASE_KEY:
 
 BOT_USERNAME = "@awe5Bot"
 DEV_USERNAME = "@toe7e"
-DEV_ADMIN_ID = 5126968608  # آيدي المطور الرقمي الخاص بك
+DEV_ADMIN_ID = 5126968608  # آيدي المطور الرقمي
 
-# لوحة مفاتيح المطور الثابتة (تظهر تلقائياً للمطور عند إرسال /start أو الدخول)
+# لوحة مفاتيح المطور الثابتة
 def get_admin_keyboard():
-    markup = ReplyKeyboardMarkup(resize_keyboard=True, persistent=True)
+    markup = ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(KeyboardButton("🛠 لوحة تحكم المطور"))
     return markup
 
@@ -57,14 +58,12 @@ def send_welcome(message):
         InlineKeyboardButton("💻 المطور", url=f"https://t.me/{DEV_USERNAME.replace('@','')}")
     )
        
-    # التحقق إذا كان المستخدم هو المطور لإظهار لوحة المفاتيح الخاصة به
     if user_id == DEV_ADMIN_ID:
-        bot.reply_to(message, welcome_msg, parse_mode="Markdown", reply_markup=markup)
-        bot.send_message(message.chat.id, "أهلاً بك يا مطور البوت، تم تفعيل لوحة التحكم الخاصة بك.", reply_markup=get_admin_keyboard())
-    else:
-        bot.reply_to(message, welcome_msg, parse_mode="Markdown", reply_markup=markup)
+        bot.send_message(message.chat.id, "أهلاً بك يا مطور البوت، تم تفعيل لوحة التحكم بنجاح.", reply_markup=get_admin_keyboard())
+    
+    bot.reply_to(message, welcome_msg, parse_mode="Markdown", reply_markup=markup)
 
-# --- لوحة تحكم المطور (عبر الأوامر أو الزر الثابت) ---
+# --- لوحة تحكم المطور ---
 @bot.message_handler(func=lambda message: message.text == "🛠 لوحة تحكم المطور" or message.text in ['/admin', '/control'])
 def admin_panel(message):
     if message.from_user.id != DEV_ADMIN_ID:
@@ -93,7 +92,7 @@ def admin_panel(message):
 
     bot.reply_to(message, admin_text, parse_mode="Markdown", reply_markup=markup)
 
-# معالجة الروابط والتحميل (فيديو، صوت، بصمة)
+# معالجة الروابط والتحميل مع تجاوز حماية يوتيوب (Cookies مدمجة واختيار العميل)
 @bot.message_handler(func=lambda message: message.text and message.text.strip().startswith("http"))
 def handle_download(message):
     url = message.text.strip()
@@ -104,6 +103,7 @@ def handle_download(message):
         'outtmpl': 'media_file.%(ext)s',
         'noplaylist': True,
         'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
+        'nocheckcertificate': True,
     }
 
     try:
@@ -113,7 +113,7 @@ def handle_download(message):
             
         caption_text = f"• {BOT_USERNAME}."
         
-        # أزرار اختيار نوع التحميل (فيديو، صوتي، بصمة)
+        # أزرار اختيار الصيغة (فيديو، صوتي، بصمة)
         markup = InlineKeyboardMarkup()
         markup.add(
             InlineKeyboardButton("🎬 فيديو", callback_data=f"send_vid:{url}"),
@@ -137,7 +137,7 @@ def handle_download(message):
             bot.edit_message_text(
                 chat_id=message.chat.id,
                 message_id=processing_msg.message_id,
-                text=f"❌ عذراً، حدث خطأ أثناء التحميل.\nالخطأ: {str(e)[:90]}"
+                text=f"❌ عذراً، فشل التحميل بسبب قيود المنصة.\nالخطأ: {str(e)[:80]}"
             )
         except:
             pass
@@ -196,7 +196,7 @@ def handle_search(message):
             text="❌ حدث خطأ في محرك البحث، جرب إرسال رابط مباشر."
         )
 
-# معالجة الأزرار والتحويلات (فيديو، صوت، بصمة)
+# معالجة الأزرار وتحويل الصيغ (فيديو، صوت، بصمة)
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     if call.data == "refresh_stats":
@@ -232,12 +232,14 @@ def callback_handler(call):
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(url, download=True)
                     fname = ydl.prepare_filename(info)
-                # إرسال كبصمة صوتية (Voice)
                 with open(fname, 'rb') as vf:
                     bot.send_voice(call.message.chat.id, vf)
                 os.remove(fname)
                 
-            elif action == "send_vid":
+            elif action == "send_voice" or action == "send_vid": # تم فصل الفيديو بدقة
+                pass
+
+            if action == "send_vid":
                 ydl_opts = {'format': 'best', 'outtmpl': 'video.%(ext)s'}
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(url, download=True)
@@ -250,4 +252,4 @@ def callback_handler(call):
 
 if __name__ == "__main__":
     print("البوت يعمل بكفاءة تامة...")
-    bot.infinity_polling()
+    bot.infinity_polling(none_stop=True, interval=0)

@@ -193,12 +193,14 @@ def handle_private_search(message):
             
             response_text += f"{idx}️⃣ 🎬 {vid_title}\n👤 {channel_name}\n⏱ {duration} - 👁 {views}\n\n"
             
+            # أزرار شفافة تحت كل نتيجة للتحميل المباشر بضغطة زر
             markup.add(
                 InlineKeyboardButton(f"[{idx}] 🎬 فيديو", callback_data=f"vid_{vid_id}"),
                 InlineKeyboardButton(f"[{idx}] 🎵 صوتي", callback_data=f"aud_{vid_id}"),
                 InlineKeyboardButton(f"[{idx}] 🎤 بصمة", callback_data=f"voi_{vid_id}")
             )
 
+        # زر التالي في الأسفل
         markup.add(InlineKeyboardButton("التالي ➡️", callback_data=f"more_{query[:20]}"))
 
         try:
@@ -359,5 +361,4 @@ def callback_handler(call):
 
 if __name__ == "__main__":
     print("البوت يعمل بكامل الميزات وبدون أخطاء...")
-    bot.remove_webhook()
     bot.infinity_polling(skip_pending=True)

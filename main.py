@@ -107,9 +107,9 @@ def format_duration(seconds):
     m, s = divmod(int(seconds), 60)
     return f"{m}:{s:02d}"
 
-# البحث السريع في المجموعات والقنوات (يبدأ بكلمة يوت)
+# البحث السريع في المجموعات والقنوات (عند كتابة: يوت + اسم الكلمة)
 @bot.message_handler(func=lambda message: message.text and message.text.startswith("يوت ") and message.chat.type in ['group', 'supergroup', 'channel'])
-def handle_group_search(message):
+def handle_group_channel_search(message):
     query = message.text.replace("يوت ", "", 1).strip()
     processing_msg = bot.reply_to(message, f"🔍 | جاري البحث والتحميل الفوري لـ: ({query}) ...")
     
@@ -132,7 +132,7 @@ def handle_group_search(message):
                 tf.write(thumb_res.content)
 
         stream = yt.streams.get_audio_only()
-        temp_file = stream.download(filename="temp_grp")
+        temp_file = stream.download(filename="temp_ch")
         filename = f"{safe_title}.mp3"
         if os.path.exists(temp_file):
             os.rename(temp_file, filename)
@@ -167,8 +167,8 @@ def handle_group_search(message):
             except:
                 pass
 
-# البحث الكامل في الخاص مع إرسال معرفات الفيديو الحقيقية
-@bot.message_handler(func=lambda message: message.text and not message.text.startswith("http") and not message.text.startswith("/dl_") and message.text != "🛠 لوحة تحكم المطور" and message.chat.type == 'private')
+# البحث الكامل في الخاص (مع أزرار شفافة لكل نتيجة للتحميل الفوري بدون نسخ)
+@bot.message_handler(func=lambda message: message.text and not message.text.startswith("http") and message.text != "🛠 لوحة تحكم المطور" and message.chat.type == 'private')
 def handle_private_search(message):
     query = message.text.strip()
     processing_msg = bot.reply_to(message, f"🔍 | جاري البحث عن: ({query}) ...")
@@ -182,6 +182,7 @@ def handle_private_search(message):
             return
 
         response_text = f"🔍 **نتائج بحث اليوتيوب لـ \"{query}\"**\n\n"
+        markup = InlineKeyboardMarkup()
         
         for idx, vid in enumerate(results, 1):
             vid_title = vid.title
@@ -190,9 +191,16 @@ def handle_private_search(message):
             views = format_views(vid.views)
             channel_name = getattr(vid, 'author', 'YouTube')
             
-            response_text += f"{idx}️⃣ 🎬 {vid_title}\n👤 {channel_name}\n⏱ {duration} - 👁 {views}\n📎 `/dl_{vid_id}`\n\n"
+            response_text += f"{idx}️⃣ 🎬 {vid_title}\n👤 {channel_name}\n⏱ {duration} - 👁 {views}\n\n"
+            
+            # أزرار شفافة تحت كل نتيجة للتحميل المباشر بضغطة زر
+            markup.add(
+                InlineKeyboardButton(f"[{idx}] 🎬 فيديو", callback_data=f"vid_{vid_id}"),
+                InlineKeyboardButton(f"[{idx}] 🎵 صوتي", callback_data=f"aud_{vid_id}"),
+                InlineKeyboardButton(f"[{idx}] 🎤 بصمة", callback_data=f"voi_{vid_id}")
+            )
 
-        markup = InlineKeyboardMarkup()
+        # زر التالي في الأسفل
         markup.add(InlineKeyboardButton("التالي ➡️", callback_data=f"more_{query[:20]}"))
 
         try:
@@ -208,15 +216,10 @@ def handle_private_search(message):
         except:
             pass
 
-@bot.message_handler(func=lambda message: message.text and (message.text.startswith("http") or message.text.startswith("/dl_")))
-def handle_download_options(message):
-    text = message.text.strip()
-    if text.startswith("/dl_"):
-        vid_id = text.replace("/dl_", "").strip()
-        url = f"https://youtu.be/{vid_id}"
-    else:
-        url = text
-
+# استقبال الروابط المباشرة في الخاص
+@bot.message_handler(func=lambda message: message.text and message.text.startswith("http"))
+def handle_direct_link(message):
+    url = message.text.strip()
     try:
         yt = YouTube(url)
         vid_id = yt.video_id
@@ -236,7 +239,7 @@ def handle_download_options(message):
         bot.send_photo(message.chat.id, FIXED_THUMB_URL, caption=caption, reply_markup=markup)
             
     except Exception as e:
-        bot.reply_to(message, f"❌ تعذر جلب معلومات الفيديو.")
+        bot.reply_to(message, f"❌ تعذر جلب معلومات الفيديو من الرابط.")
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
@@ -266,6 +269,7 @@ def callback_handler(call):
                 return
 
             response_text = f"🔍 **المزيد من نتائج بحث اليوتيوب لـ \"{query}\"**\n\n"
+            markup = InlineKeyboardMarkup()
             
             for idx, vid in enumerate(results, 6):
                 vid_title = vid.title
@@ -274,9 +278,14 @@ def callback_handler(call):
                 views = format_views(vid.views)
                 channel_name = getattr(vid, 'author', 'YouTube')
                 
-                response_text += f"{idx}️⃣ 🎬 {vid_title}\n👤 {channel_name}\n⏱ {duration} - 👁 {views}\n📎 `/dl_{vid_id}`\n\n"
+                response_text += f"{idx}️⃣ 🎬 {vid_title}\n👤 {channel_name}\n⏱ {duration} - 👁 {views}\n\n"
+                markup.add(
+                    InlineKeyboardButton(f"[{idx}] 🎬 فيديو", callback_data=f"vid_{vid_id}"),
+                    InlineKeyboardButton(f"[{idx}] 🎵 صوتي", callback_data=f"aud_{vid_id}"),
+                    InlineKeyboardButton(f"[{idx}] 🎤 بصمة", callback_data=f"voi_{vid_id}")
+                )
 
-            bot.send_message(call.message.chat.id, response_text, parse_mode="Markdown")
+            bot.send_message(call.message.chat.id, response_text, parse_mode="Markdown", reply_markup=markup)
         except:
             bot.answer_callback_query(call.id, "❌ حدث خطأ أثناء جلب الصفحة التالية.", show_alert=True)
         return

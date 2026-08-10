@@ -91,11 +91,14 @@ def admin_panel(message):
 
     bot.reply_to(message, admin_text, parse_mode="Markdown", reply_markup=markup)
 
-# استقبال الروابط ومعالجتها عبر yt-dlp مع التحديثات الجديدة وتجاوز القيود
+# استقبال الروابط ومعالجتها عبر yt-dlp مع تحديد المسار المطلق لملف الكوكيز
 @bot.message_handler(func=lambda message: message.text and message.text.strip().startswith("http"))
 def handle_download(message):
     url = message.text.strip()
     processing_msg = bot.reply_to(message, "⏳ | جاري التحميل، يرجى الانتظار...")
+
+    # تحديد المسار المطلق لملف الكوكيز لضمان قراءته بشكل صحيح على السيرفر
+    cookie_path = os.path.join(os.getcwd(), "cookies.txt")
 
     ydl_opts = {
         'format': 'best',
@@ -105,9 +108,8 @@ def handle_download(message):
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     }
     
-    # التأكد من وجود ملف الكوكيز واستخدامه
-    if os.path.exists("cookies.txt"):
-        ydl_opts['cookiefile'] = "cookies.txt"
+    if os.path.exists(cookie_path):
+        ydl_opts['cookiefile'] = cookie_path
 
     filename = None
     try:
@@ -195,5 +197,5 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "❌ هذا الزر للمطور فقط", show_alert=True)
 
 if __name__ == "__main__":
-    print("البوت يعمل الآن مع الكوكيز وتحديثات يوتيوب...")
+    print("البوت يعمل الآن مع المسار المطلق للكوكيز...")
     bot.infinity_polling(skip_pending=True)

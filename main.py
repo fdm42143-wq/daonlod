@@ -91,39 +91,39 @@ def admin_panel(message):
 
     bot.reply_to(message, admin_text, parse_mode="Markdown", reply_markup=markup)
 
-# استقبال الروابط ومعالجتها عبر yt-dlp مع استخدام ملف الكوكيز
+# استقبال الروابط ومعالجتها عبر yt-dlp مع التحديثات الجديدة وتجاوز القيود
 @bot.message_handler(func=lambda message: message.text and message.text.strip().startswith("http"))
 def handle_download(message):
     url = message.text.strip()
-    processing_msg = bot.reply_to(message, "⏳ | يرجى الانتظار، جاري معالجة التحميل...")
+    processing_msg = bot.reply_to(message, "⏳ | جاري التحميل، يرجى الانتظار...")
 
     ydl_opts = {
         'format': 'best',
         'outtmpl': 'media_file.%(ext)s',
         'noplaylist': True,
         'nocheckcertificate': True,
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     }
     
-    # استخدام ملف cookies.txt إذا كان موجوداً في المجلد
+    # التأكد من وجود ملف الكوكيز واستخدامه
     if os.path.exists("cookies.txt"):
         ydl_opts['cookiefile'] = "cookies.txt"
 
     filename = None
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.cache.remove()
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
             
-        caption_text = f"• {BOT_USERNAME}."
-        
         if filename and os.path.exists(filename):
             with open(filename, 'rb') as f:
                 if filename.endswith(('.mp4', '.mkv', '.webm', '.mov', '.avi', '.flv')):
-                    bot.send_video(message.chat.id, f, caption=caption_text)
+                    bot.send_video(message.chat.id, f, caption=f"• {BOT_USERNAME}.")
                 else:
-                    bot.send_audio(message.chat.id, f, caption=caption_text)
+                    bot.send_audio(message.chat.id, f, caption=f"• {BOT_USERNAME}.")
         else:
-            raise Exception("لم يتم العثور على الملف.")
+            raise Exception("لم يتم إنتاج ملف.")
                 
         bot.delete_message(message.chat.id, processing_msg.message_id)
 
@@ -132,7 +132,7 @@ def handle_download(message):
             bot.edit_message_text(
                 chat_id=message.chat.id,
                 message_id=processing_msg.message_id,
-                text=f"❌ عذراً، فشل التحميل.\nالخطأ: {str(e)[:100]}"
+                text=f"❌ تعذر التحميل. جرب رابطاً آخر.\nالخطأ: {str(e)[:50]}"
             )
         except:
             pass
@@ -195,5 +195,5 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "❌ هذا الزر للمطور فقط", show_alert=True)
 
 if __name__ == "__main__":
-    print("البوت يعمل الآن مع ملف الكوكيز وقاعدة البيانات...")
+    print("البوت يعمل الآن مع الكوكيز وتحديثات يوتيوب...")
     bot.infinity_polling(skip_pending=True)

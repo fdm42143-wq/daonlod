@@ -1,6 +1,6 @@
 import os
 import telebot
-import yt_dlp
+from pytubefix import YouTube
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from supabase import create_client, Client
 
@@ -11,10 +11,8 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 if not TOKEN:
     raise ValueError("يرجى تعيين متغير البيئة BOT_TOKEN")
 
-# ضبط البوت وعدم استخدام threaded لمنع أي تعارض
 bot = telebot.TeleBot(TOKEN, threaded=False)
 
-# الاتصال بقاعدة بيانات Supabase
 supabase: Client = None
 if SUPABASE_URL and SUPABASE_KEY:
     try:
@@ -24,7 +22,7 @@ if SUPABASE_URL and SUPABASE_KEY:
 
 BOT_USERNAME = "@awe5Bot"
 DEV_USERNAME = "@toe7e"
-DEV_ADMIN_ID = 5126968608  # آيدي المطور
+DEV_ADMIN_ID = 5126968608
 
 def get_admin_keyboard():
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
@@ -91,39 +89,28 @@ def admin_panel(message):
 
     bot.reply_to(message, admin_text, parse_mode="Markdown", reply_markup=markup)
 
-# الطريقة الجديدة المضمنة بالكامل لتجاوز مشاكل يوتيوب بدون كوكيز
+# التحميل المضمون باستخدام pytubefix وتجاوز مشاكل يوتيوب
 @bot.message_handler(func=lambda message: message.text and message.text.strip().startswith("http"))
 def handle_download(message):
     url = message.text.strip()
-    processing_msg = bot.reply_to(message, "⏳ | جاري التحميل بالطريقة المضمونة، يرجى الانتظار...")
+    processing_msg = bot.reply_to(message, "⏳ | جاري التحميل بالطريقة الجديدة المضمونة، يرجى الانتظار...")
 
-    ydl_opts = {
-        'format': 'best',
-        'outtmpl': 'media_file.%(ext)s',
-        'noplaylist': True,
-        'nocheckcertificate': True,
-        'extractor_args': {
-            'youtube': {
-                'player_client': ['android', 'ios'],
-            }
-        },
-    }
-
-    filename = None
+    filename = "media_file.mp4"
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.cache.remove()
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
+        yt = YouTube(url)
+        # اختيار أعلى دقة متوفرة مع الصوت
+        stream = yt.streams.get_highest_resolution()
+        if not stream:
+            raise Exception("لا توجد دقة متاحة لهذا الفيديو.")
             
-        if filename and os.path.exists(filename):
+        # تحميل الملف مباشرة
+        stream.download(filename=filename)
+            
+        if os.path.exists(filename):
             with open(filename, 'rb') as f:
-                if filename.endswith(('.mp4', '.mkv', '.webm', '.mov', '.avi', '.flv')):
-                    bot.send_video(message.chat.id, f, caption=f"• {BOT_USERNAME}.")
-                else:
-                    bot.send_audio(message.chat.id, f, caption=f"• {BOT_USERNAME}.")
+                bot.send_video(message.chat.id, f, caption=f"• {BOT_USERNAME}.")
         else:
-            raise Exception("لم يتم إنتاج الملف.")
+            raise Exception("لم يتم حفظ الملف.")
                 
         bot.delete_message(message.chat.id, processing_msg.message_id)
 
@@ -137,46 +124,17 @@ def handle_download(message):
         except:
             pass
     finally:
-        if filename and os.path.exists(filename):
+        if os.path.exists(filename):
             try:
                 os.remove(filename)
             except:
                 pass
 
-# البحث بالنصوص
+# البحث بالنصوص (عبر يوتيوب مباشرة أو رسالة تنبيه)
 @bot.message_handler(func=lambda message: message.text and not message.text.startswith("http") and message.text != "🛠 لوحة تحكم المطور")
 def handle_search(message):
     query = message.text.strip()
-    processing_msg = bot.reply_to(message, f"🔍 | جاري البحث عن: ({query}) ...")
-    
-    try:
-        ydl_opts = {
-            'extract_flat': True,
-            'default_search': 'ytsearch5',
-            'quiet': True,
-        }
-        
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            results = ydl.extract_info(f"ytsearch5:{query}", download=False)
-            
-        entries = results.get('entries', [])
-        
-        if not entries:
-            bot.edit_message_text(chat_id=message.chat.id, message_id=processing_msg.message_id, text="❌ لم يتم العثور على نتائج.")
-            return
-
-        response_text = f"🔍 ¦ نتائج البحث لـ \"{query}\"\n\n"
-        markup = InlineKeyboardMarkup()
-        
-        for index, entry in enumerate(entries, start=1):
-            title = entry.get('title', 'فيديو بدون عنوان')
-            vid_id = entry.get('id', '')
-            response_text += f"🎬 {title}\n📎 https://youtu.be/{vid_id}\n\n"
-            markup.add(InlineKeyboardButton(f"نتيجة {index}: {title[:30]}...", url=f"https://youtu.be/{vid_id}"))
-
-        bot.edit_message_text(chat_id=message.chat.id, message_id=processing_msg.message_id, text=response_text, reply_markup=markup)
-    except Exception as e:
-        bot.edit_message_text(chat_id=message.chat.id, message_id=processing_msg.message_id, text="❌ حدث خطأ في البحث.")
+    bot.reply_to(message, f"🔍 | تم استلام بحثك: ({query}). يرجى إرسال الرابط مباشرة للتحميل.")
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
@@ -195,5 +153,5 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "❌ هذا الزر للمطور فقط", show_alert=True)
 
 if __name__ == "__main__":
-    print("البوت يعمل بالطريقة الجديدة المستقرة...")
+    print("البوت يعمل بمكتبة pytubefix المستقرة...")
     bot.infinity_polling(skip_pending=True)

@@ -1,6 +1,6 @@
 import os
-import requests
 import telebot
+import yt_dlp
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from supabase import create_client, Client
 
@@ -91,85 +91,94 @@ def admin_panel(message):
 
     bot.reply_to(message, admin_text, parse_mode="Markdown", reply_markup=markup)
 
-# دالة جلب روابط التحميل المباشرة بدون أخطاء يوتيوب أو حظر
-def get_media_links(url):
-    try:
-        api_url = "https://api.vidssave.com/api/contentsite_api/media/parse"
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        }
-        data = {
-            "auth": "20250901majwlqo",
-            "domain": "api-ak.vidssave.com",
-            "origin": "source",
-            "link": url
-        }
-        response = requests.post(api_url, data=data, headers=headers, timeout=15)
-        res_json = response.json()
-        
-        links = []
-        if 'data' in res_json:
-            # البحث في الـ media أو resources
-            media_list = res_json['data'].get('media', [])
-            for item in media_list:
-                for res in item.get('resources', []):
-                    if 'download_url' in res:
-                        links.append({
-                            'quality': res.get('quality', 'جودة عالية'),
-                            'type': item.get('type', 'video'),
-                            'url': res['download_url']
-                        })
-            
-            # إذا لم توجد في media، نبحث في resources مباشرة
-            if not links and 'resources' in res_json['data']:
-                for res in res_json['data']['resources']:
-                    if 'download_url' in res:
-                        links.append({
-                            'quality': res.get('quality', 'جودة عالية'),
-                            'type': res.get('type', 'video'),
-                            'url': res['download_url']
-                        })
-        return links
-    except Exception as e:
-        print(f"API Error: {e}")
-        return []
-
-# استقبال الروابط ومعالجتها عبر الـ API السريع
+# استقبال الروابط ومعالجتها عبر yt-dlp مع تفعيل ملف الـ Cookies لتجاوز الحظر
 @bot.message_handler(func=lambda message: message.text and message.text.strip().startswith("http"))
 def handle_download(message):
     url = message.text.strip()
-    processing_msg = bot.reply_to(message, "⏳ | جاري جلب روابط التحميل السريعة...")
+    processing_msg = bot.reply_to(message, "⏳ | يرجى الانتظار، جاري معالجة التحميل...")
 
-    links = get_media_links(url)
+    # التحقق من وجود ملف الـ cookies لتمريره إلى yt-dlp
+    cookie_path = 'cookies.txt'
+    ydl_opts = {
+        'format': 'bestvideo+bestaudio/best',
+        'outtmpl': 'media_file.%(ext)s',
+        'noplaylist': True,
+        'nocheckcertificate': True,
+        'merge_output_format': 'mp4',
+    }
+    
+    if os.path.exists(cookie_path):
+        ydl_opts['cookiefile'] = cookie_path
 
-    if not links:
-        bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=processing_msg.message_id,
-            text="❌ عذراً، لم نتمكن من جلب روابط التحميل لهذا الرابط. تأكد أنه مدعوم وحاول مجدداً."
-        )
-        return
+    filename = None
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
+            
+        caption_text = f"• {BOT_USERNAME}."
+        
+        if filename and os.path.exists(filename):
+            with open(filename, 'rb') as f:
+                if filename.endswith(('.mp4', '.mkv', '.webm', '.mov', '.avi', '.flv')):
+                    bot.send_video(message.chat.id, f, caption=caption_text)
+                else:
+                    bot.send_audio(message.chat.id, f, caption=caption_text)
+        else:
+            raise Exception("لم يتم العثور على الملف.")
+                
+        bot.delete_message(message.chat.id, processing_msg.message_id)
 
-    markup = InlineKeyboardMarkup()
-    for idx, link_info in enumerate(links[:4]): # عرض أول 4 روابط متوفرة
-        q = link_info['quality']
-        t = "فيديو 🎬" if link_info['type'] == 'video' else "صوت 🎵"
-        # تخزين الرابط في الأزرار بشكل آمن
-        markup.add(InlineKeyboardButton(f"تحميل {t} ({q})", url=link_info['url']))
+    except Exception as e:
+        try:
+            bot.edit_message_text(
+                chat_id=message.chat.id,
+                message_id=processing_msg.message_id,
+                text=f"❌ عذراً، فشل التحميل.\nالخطأ: {str(e)[:100]}"
+            )
+        except:
+            pass
+    finally:
+        if filename and os.path.exists(filename):
+            try:
+                os.remove(filename)
+            except:
+                pass
 
-    bot.edit_message_text(
-        chat_id=message.chat.id,
-        message_id=processing_msg.message_id,
-        text=f"✅ **تم استخراج روابط التحميل بنجاح بواسطة {BOT_USERNAME}**\nاختر الجودة المطلوبة للتحميل المباشر:",
-        reply_markup=markup,
-        parse_mode="Markdown"
-    )
-
-# البحث بالنصوص (عبر يوتيوب مباشرة كروابط بحث)
+# البحث بالنصوص
 @bot.message_handler(func=lambda message: message.text and not message.text.startswith("http") and message.text != "🛠 لوحة تحكم المطور")
 def handle_search(message):
     query = message.text.strip()
-    bot.reply_to(message, f"🔍 | للبحث والتحميل، يرجى إرسال رابط مباشر (يوتيوب، انستقرام، تيك توك، إلخ) وسيتم جلب روابط التحميل فوراً.")
+    processing_msg = bot.reply_to(message, f"🔍 | جاري البحث عن: ({query}) ...")
+    
+    try:
+        ydl_opts = {
+            'extract_flat': True,
+            'default_search': 'ytsearch5',
+            'quiet': True,
+        }
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            results = ydl.extract_info(f"ytsearch5:{query}", download=False)
+            
+        entries = results.get('entries', [])
+        
+        if not entries:
+            bot.edit_message_text(chat_id=message.chat.id, message_id=processing_msg.message_id, text="❌ لم يتم العثور على نتائج.")
+            return
+
+        response_text = f"🔍 ¦ نتائج البحث لـ \"{query}\"\n\n"
+        markup = InlineKeyboardMarkup()
+        
+        for index, entry in enumerate(entries, start=1):
+            title = entry.get('title', 'فيديو بدون عنوان')
+            vid_id = entry.get('id', '')
+            response_text += f"🎬 {title}\n📎 https://youtu.be/{vid_id}\n\n"
+            markup.add(InlineKeyboardButton(f"نتيجة {index}: {title[:30]}...", url=f"https://youtu.be/{vid_id}"))
+
+        bot.edit_message_text(chat_id=message.chat.id, message_id=processing_msg.message_id, text=response_text, reply_markup=markup)
+    except Exception as e:
+        bot.edit_message_text(chat_id=message.chat.id, message_id=processing_msg.message_id, text="❌ حدث خطأ في البحث.")
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
@@ -188,5 +197,5 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "❌ هذا الزر للمطور فقط", show_alert=True)
 
 if __name__ == "__main__":
-    print("البوت يعمل الآن بدون أخطاء يوتيوب وبسرعة فائقة...")
+    print("البوت يعمل الآن مع دعم ملف الـ Cookies...")
     bot.infinity_polling(skip_pending=True)

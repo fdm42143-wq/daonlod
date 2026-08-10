@@ -107,7 +107,7 @@ def format_duration(seconds):
     m, s = divmod(int(seconds), 60)
     return f"{m}:{s:02d}"
 
-# معالجة البحث في المجموعات والقنوات عند البدء بكلمة "يوت"
+# البحث السريع في المجموعات والقنوات (يبدأ بكلمة يوت)
 @bot.message_handler(func=lambda message: message.text and message.text.startswith("يوت ") and message.chat.type in ['group', 'supergroup', 'channel'])
 def handle_group_search(message):
     query = message.text.replace("يوت ", "", 1).strip()
@@ -125,14 +125,12 @@ def handle_group_search(message):
         yt = YouTube(url)
         safe_title = "".join([c for c in yt.title if c.isalnum() or c.isspace()]).strip() or "media"
         
-        # تنزيل الغلاف الثابت
         thumb_res = requests.get(FIXED_THUMB_URL)
         if thumb_res.status_code == 200:
             thumb_file = f"fixed_thumb_{vid.video_id}.jpg"
             with open(thumb_file, 'wb') as tf:
                 tf.write(thumb_res.content)
 
-        # تحميل الملف الصوتي وإرساله مباشرة مع الحقوق والصورة
         stream = yt.streams.get_audio_only()
         temp_file = stream.download(filename="temp_grp")
         filename = f"{safe_title}.mp3"
@@ -169,7 +167,7 @@ def handle_group_search(message):
             except:
                 pass
 
-# معالجة البحث في المحادثة الخاصة (بحث كامل مع النتائج والأوامر الزرقاء)
+# البحث الكامل في الخاص مع إرسال معرفات الفيديو الحقيقية
 @bot.message_handler(func=lambda message: message.text and not message.text.startswith("http") and not message.text.startswith("/dl_") and message.text != "🛠 لوحة تحكم المطور" and message.chat.type == 'private')
 def handle_private_search(message):
     query = message.text.strip()
@@ -192,7 +190,7 @@ def handle_private_search(message):
             views = format_views(vid.views)
             channel_name = getattr(vid, 'author', 'YouTube')
             
-            response_text += f"{idx}️⃣ 🎬 {vid_title}\n👤 {channel_name}\n⏱ {duration} - 👁 {views}\n📎 /dl_{vid_id}\n\n"
+            response_text += f"{idx}️⃣ 🎬 {vid_title}\n👤 {channel_name}\n⏱ {duration} - 👁 {views}\n📎 `/dl_{vid_id}`\n\n"
 
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("التالي ➡️", callback_data=f"more_{query[:20]}"))
@@ -214,7 +212,8 @@ def handle_private_search(message):
 def handle_download_options(message):
     text = message.text.strip()
     if text.startswith("/dl_"):
-        url = f"https://youtu.be/{text.replace('/dl_', '')}"
+        vid_id = text.replace("/dl_", "").strip()
+        url = f"https://youtu.be/{vid_id}"
     else:
         url = text
 
@@ -275,7 +274,7 @@ def callback_handler(call):
                 views = format_views(vid.views)
                 channel_name = getattr(vid, 'author', 'YouTube')
                 
-                response_text += f"{idx}️⃣ 🎬 {vid_title}\n👤 {channel_name}\n⏱ {duration} - 👁 {views}\n📎 /dl_{vid_id}\n\n"
+                response_text += f"{idx}️⃣ 🎬 {vid_title}\n👤 {channel_name}\n⏱ {duration} - 👁 {views}\n📎 `/dl_{vid_id}`\n\n"
 
             bot.send_message(call.message.chat.id, response_text, parse_mode="Markdown")
         except:

@@ -25,7 +25,7 @@ if SUPABASE_URL and SUPABASE_KEY:
 
 BOT_USERNAME = "@awe5Bot"
 DEV_USERNAME = "@toe7e"
-DEV_USERNAME_CLEAN = "toe7e" # يوزر المطور بدون علامة الـ @
+DEV_ADMIN_ID = 5126968608  # آيدي المطور الرقمي الخاص بك
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -52,7 +52,7 @@ def send_welcome(message):
     markup = InlineKeyboardMarkup()
     markup.add(
         InlineKeyboardButton("🤖 البوت", url=f"https://t.me/{BOT_USERNAME.replace('@','')}"),
-        InlineKeyboardButton("💻 المطور", url=f"https://t.me/{DEV_USERNAME_CLEAN}")
+        InlineKeyboardButton("💻 المطور", url=f"https://t.me/{DEV_USERNAME.replace('@','')}")
     )
        
     bot.reply_to(message, welcome_msg, parse_mode="Markdown", reply_markup=markup)
@@ -60,17 +60,13 @@ def send_welcome(message):
 # --- لوحة تحكم المطور ---
 @bot.message_handler(commands=['admin', 'control'])
 def admin_panel(message):
-    username = message.from_user.username
-    
-    # التحقق مما إذا كان المرسل هو المطور حصراً
-    if not username or username.lower() != DEV_USERNAME_CLEAN.lower():
+    if message.from_user.id != DEV_ADMIN_ID:
         bot.reply_to(message, "❌ عذراً، هذا الأمر مخصص للمطور فقط.")
         return
 
     users_count = 0
     if supabase:
         try:
-            # جلب عدد المستخدمين من قاعدة البيانات
             response = supabase.table("users").select("user_id", count="exact").execute()
             if response.count is not None:
                 users_count = response.count
@@ -87,7 +83,6 @@ def admin_panel(message):
 
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("📊 تحديث الإحصائيات", callback_data="refresh_stats"))
-    markup.add(InlineKeyboardButton("📢 إرسال اذاعة للكل", callback_data="broadcast_msg"))
 
     bot.reply_to(message, admin_text, parse_mode="Markdown", reply_markup=markup)
 
@@ -95,12 +90,12 @@ def admin_panel(message):
 @bot.message_handler(func=lambda message: message.text and message.text.strip().startswith("http"))
 def handle_download(message):
     url = message.text.strip()
-    processing_msg = bot.reply_to(message, "⏳ | يرجى الانتظار، يتم قياس حجم التحميل...")
+    processing_msg = bot.reply_to(message, "⏳ | يرجى الانتظار، جاري التحميل ومعالجة الفيديو...")
 
     ydl_opts = {
         'format': 'best',
         'outtmpl': 'downloaded_media.%(ext)s',
-        'max_filesize': 50 * 1024 * 1024,
+        'noplaylist': True,
     }
 
     try:
@@ -132,12 +127,12 @@ def handle_download(message):
             bot.edit_message_text(
                 chat_id=message.chat.id,
                 message_id=processing_msg.message_id,
-                text="❌ عذراً، فشل التحميل. يرجى التأكد من أن الرابط عام وغير مخفي أو كبير الحجم."
+                text=f"❌ عذراً، فشل التحميل. تأكد من أن الرابط عام.\nالخطأ: {str(e)[:100]}"
             )
         except:
             pass
 
-# معالجة النصوص العادية والبحث
+# معالجة النصوص العادية والبحث الآمن
 @bot.message_handler(func=lambda message: message.text and not message.text.startswith("http"))
 def handle_search(message):
     query = message.text.strip()
@@ -147,6 +142,7 @@ def handle_search(message):
         ydl_opts = {
             'extract_flat': True,
             'default_search': 'ytsearch5',
+            'quiet': True,
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -166,14 +162,15 @@ def handle_search(message):
             vid_id = entry.get('id', '')
             duration_sec = entry.get('duration', 0)
             
-            mins = duration_sec // 60
-            secs = duration_sec % 60
-            duration_str = f"{mins}:{secs:02d}" if duration_sec else "مباشر/غير معروف"
+            if duration_sec:
+                mins = duration_sec // 60
+                secs = duration_sec % 60
+                duration_str = f"{mins}:{secs:02d}"
+            else:
+                duration_str = "غير معروف"
             
             response_text += f"🎬 {title}\n📎 https://youtu.be/{vid_id}\n⏱ {duration_str}\n\n"
             markup.add(InlineKeyboardButton(f"نتيجة {index}: {title[:30]}...", url=f"https://youtu.be/{vid_id}"))
-
-        markup.add(InlineKeyboardButton("« التالي", callback_data="next_page"))
 
         bot.edit_message_text(
             chat_id=message.chat.id,
@@ -188,11 +185,11 @@ def handle_search(message):
             text="❌ حدث خطأ أثناء عملية البحث، حاول مرة أخرى."
         )
 
-# معالجة الضغط على الأزرار الشفافة لوحة التحكم
+# معالجة الأزرار الشفافة
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     if call.data == "refresh_stats":
-        if call.from_user.username and call.from_user.username.lower() == DEV_USERNAME_CLEAN.lower():
+        if call.from_user.id == DEV_ADMIN_ID:
             users_count = 0
             if supabase:
                 try:
@@ -204,13 +201,7 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, f"📊 عدد المشتركين الحالي: {users_count}")
         else:
             bot.answer_callback_query(call.id, "❌ هذا الزر للمطور فقط", show_alert=True)
-            
-    elif call.data == "broadcast_msg":
-        if call.from_user.username and call.from_user.username.lower() == DEV_USERNAME_CLEAN.lower():
-            bot.answer_callback_query(call.id, "أرسل الرسالة التي تريد إذاعتها للمشتركين (قريباً)", show_alert=True)
-        else:
-            bot.answer_callback_query(call.id, "❌ هذا الزر للمطور فقط", show_alert=True)
 
 if __name__ == "__main__":
-    print("البوت يعمل مع لوحة تحكم المطور بكفاءة...")
+    print("البوت يعمل بكفاءة تامة...")
     bot.infinity_polling()

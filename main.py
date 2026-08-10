@@ -13,7 +13,7 @@ if not TOKEN:
 
 bot = telebot.TeleBot(TOKEN)
 
-# اتصال قاعدة البيانات بشكل آمن وسليم
+# اتصال قاعدة البيانات بشكل آمن
 supabase: Client = None
 if SUPABASE_URL and SUPABASE_KEY:
     try:
@@ -23,7 +23,7 @@ if SUPABASE_URL and SUPABASE_KEY:
 
 BOT_USERNAME = "@awe5Bot"
 DEV_USERNAME = "@toe7e"
-DEV_ADMIN_ID = 5126968608  # آيدي المطور الرقمي
+DEV_ADMIN_ID = 5126968608  # آيدي المطور
 
 # لوحة مفاتيح المطور الثابتة
 def get_admin_keyboard():
@@ -92,28 +92,30 @@ def admin_panel(message):
 
     bot.reply_to(message, admin_text, parse_mode="Markdown", reply_markup=markup)
 
-# معالجة الروابط والتحميل مع تجاوز حماية يوتيوب (Cookies مدمجة واختيار العميل)
+# معالجة الروابط والتحميل مع دمج الصيغ لحل مشكلة يوتيوب نهائياً
 @bot.message_handler(func=lambda message: message.text and message.text.strip().startswith("http"))
 def handle_download(message):
     url = message.text.strip()
     processing_msg = bot.reply_to(message, "⏳ | يرجى الانتظار، جاري معالجة التحميل...")
 
     ydl_opts = {
-        'format': 'best',
+        'format': 'bv*+ba/b',  # صيغة مجربة ومضمونة لدمج أعلى جودة فيديو مع الصوت
         'outtmpl': 'media_file.%(ext)s',
         'noplaylist': True,
         'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
         'nocheckcertificate': True,
+        'merge_output_format': 'mp4',
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
+            if not filename.endswith('.mp4') and os.path.exists('media_file.mp4'):
+                filename = 'media_file.mp4'
             
         caption_text = f"• {BOT_USERNAME}."
         
-        # أزرار اختيار الصيغة (فيديو، صوتي، بصمة)
         markup = InlineKeyboardMarkup()
         markup.add(
             InlineKeyboardButton("🎬 فيديو", callback_data=f"send_vid:{url}"),
@@ -196,7 +198,7 @@ def handle_search(message):
             text="❌ حدث خطأ في محرك البحث، جرب إرسال رابط مباشر."
         )
 
-# معالجة الأزرار وتحويل الصيغ (فيديو، صوت، بصمة)
+# معالجة الأزرار وتحويل الصيغ
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     if call.data == "refresh_stats":
@@ -236,14 +238,13 @@ def callback_handler(call):
                     bot.send_voice(call.message.chat.id, vf)
                 os.remove(fname)
                 
-            elif action == "send_voice" or action == "send_vid": # تم فصل الفيديو بدقة
-                pass
-
-            if action == "send_vid":
-                ydl_opts = {'format': 'best', 'outtmpl': 'video.%(ext)s'}
+            elif action == "send_vid":
+                ydl_opts = {'format': 'bv*+ba/b', 'outtmpl': 'video.%(ext)s', 'merge_output_format': 'mp4'}
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(url, download=True)
                     fname = ydl.prepare_filename(info)
+                    if not fname.endswith('.mp4') and os.path.exists('video.mp4'):
+                        fname = 'video.mp4'
                 with open(fname, 'rb') as vf:
                     bot.send_video(call.message.chat.id, vf, caption=f"• {BOT_USERNAME}")
                 os.remove(fname)

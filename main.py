@@ -25,7 +25,6 @@ BOT_USERNAME = "@awe5Bot"
 DEV_USERNAME = "@toe7e"
 DEV_ADMIN_ID = 5126968608
 
-# رابط صورتك الثابتة المرفوعة على جيت هب
 FIXED_THUMB_URL = "https://raw.githubusercontent.com/fdm42143-wq/daonlod/main/7bcc85a8907b306cede0cfd79d5af741.jpg"
 
 def get_admin_keyboard():
@@ -106,6 +105,7 @@ def format_duration(seconds):
     m, s = divmod(int(seconds), 60)
     return f"{m}:{s:02d}"
 
+# معالجة البحث وإرسال النتائج بشكل نصي مع الأوامر الزرقاء القابلة للضغط التلقائي
 @bot.message_handler(func=lambda message: message.text and not message.text.startswith("http") and not message.text.startswith("/dl_") and message.text != "🛠 لوحة تحكم المطور")
 def handle_search(message):
     query = message.text.strip()
@@ -120,7 +120,6 @@ def handle_search(message):
             return
 
         response_text = f"🔍 **نتائج بحث اليوتيوب لـ \"{query}\"**\n\n"
-        markup = InlineKeyboardMarkup()
         
         for idx, vid in enumerate(results, 1):
             vid_title = vid.title
@@ -129,11 +128,14 @@ def handle_search(message):
             views = format_views(vid.views)
             channel_name = vid.author
             
-            response_text += f"{idx}️⃣ 🎬 {vid_title}\n👤 {channel_name}\n⏱ {duration} - 👁 {views}\n\n"
-            markup.add(InlineKeyboardButton(f"📥 تحميل: {vid_title[:30]}...", callback_data=f"dl_btn_{vid_id}"))
+            # وضع الأوامر بالشكل `/dl_...` لكي يتحول النص إلى رابط أزرق تفاعلي بالضغط المباشر
+            response_text += f"{idx}️⃣ 🎬 {vid_title}\n👤 {channel_name}\n⏱ {duration} - 👁 {views}\n📎 /dl_{vid_id}\n\n"
 
+        # زر التالي الشفاف في الأسفل
+        markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("التالي ➡️", callback_data=f"more_{query[:20]}"))
 
+        # حذف رسالة "جاري البحث..."
         try:
             bot.delete_message(message.chat.id, processing_msg.message_id)
         except:
@@ -171,7 +173,6 @@ def handle_download_options(message):
             InlineKeyboardButton("🎤 بصمة صوتية.", callback_data=f"voi_{vid_id}")
         )
         
-        # استخدام صورتك الثابتة من جيت هب بدلاً من صورة يوتيوب
         bot.send_photo(message.chat.id, FIXED_THUMB_URL, caption=caption, reply_markup=markup)
             
     except Exception as e:
@@ -194,30 +195,7 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "❌ هذا الزر للمطور فقط", show_alert=True)
             return
 
-    if call.data.startswith("dl_btn_"):
-        vid_id = call.data.replace("dl_btn_", "")
-        bot.answer_callback_query(call.id, "⏳ جلب خيارات التحميل...")
-        url = f"https://youtu.be/{vid_id}"
-        try:
-            yt = YouTube(url)
-            title = yt.title
-            duration = format_duration(yt.length)
-            views = format_views(yt.views)
-            caption = f"🎬 {title}\n👤 {BOT_USERNAME}\n⏱ {duration} - 👁 {views}"
-            
-            markup = InlineKeyboardMarkup(row_width=3)
-            markup.add(
-                InlineKeyboardButton("🎬 مقطع فيديو.", callback_data=f"vid_{vid_id}"),
-                InlineKeyboardButton("🎵 ملف صوتي.", callback_data=f"aud_{vid_id}"),
-                InlineKeyboardButton("🎤 بصمة صوتية.", callback_data=f"voi_{vid_id}")
-            )
-            
-            # استخدام صورتك الثابتة من جيت هب هنا أيضاً عند الضغط على زر التحميل من البحث
-            bot.send_photo(call.message.chat.id, FIXED_THUMB_URL, caption=caption, reply_markup=markup)
-        except:
-            bot.send_message(call.message.chat.id, "❌ حدث خطأ، جرب إرسال الرابط مباشرة.")
-        return
-
+    # معالجة زر التالي لجلب النتائج من 6 إلى 10
     if call.data.startswith("more_"):
         bot.answer_callback_query(call.id, "🔍 جاري جلب المزيد من النتائج...")
         query = call.data.replace("more_", "")
@@ -229,7 +207,6 @@ def callback_handler(call):
                 return
 
             response_text = f"🔍 **المزيد من نتائج بحث اليوتيوب لـ \"{query}\"**\n\n"
-            markup = InlineKeyboardMarkup()
             
             for idx, vid in enumerate(results, 6):
                 vid_title = vid.title
@@ -238,10 +215,12 @@ def callback_handler(call):
                 views = format_views(vid.views)
                 channel_name = vid.author
                 
-                response_text += f"{idx}️⃣ 🎬 {vid_title}\n👤 {channel_name}\n⏱ {duration} - 👁 {views}\n\n"
-                markup.add(InlineKeyboardButton(f"📥 تحميل: {vid_title[:30]}...", callback_data=f"dl_btn_{vid_id}"))
+                response_text += f"{idx}️⃣ 🎬 {vid_title}\n👤 {channel_name}\n⏱ {duration} - 👁 {views}\n📎 /dl_{vid_id}\n\n"
 
-            bot.send_message(call.message.chat.id, response_text, parse_mode="Markdown", reply_markup=markup)
+            markup = InlineKeyboardMarkup()
+            markup.add(InlineKeyboardButton("⬅️ السابق (إن وجد)", callback_data="none"))
+
+            bot.send_message(call.message.chat.id, response_text, parse_mode="Markdown")
         except:
             bot.answer_callback_query(call.id, "❌ حدث خطأ أثناء جلب الصفحة التالية.", show_alert=True)
         return
@@ -316,5 +295,5 @@ def callback_handler(call):
                 pass
 
 if __name__ == "__main__":
-    print("البوت يعمل بالغلاف الثابت بالكامل...")
+    print("البوت يعمل مع الأوامر الزرقاء التفاعلية...")
     bot.infinity_polling(skip_pending=True)

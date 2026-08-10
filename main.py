@@ -1,11 +1,9 @@
 import os
 import telebot
 import yt_dlp
-import requests
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from supabase import create_client, Client
 
-# قراءة المتغيرات من بيئة العمل (Railway Variables)
 TOKEN = os.getenv("BOT_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
@@ -15,7 +13,6 @@ if not TOKEN:
 
 bot = telebot.TeleBot(TOKEN)
 
-# إعداد اتصال قاعدة بيانات Supabase
 supabase: Client = None
 if SUPABASE_URL and SUPABASE_KEY:
     try:
@@ -25,14 +22,13 @@ if SUPABASE_URL and SUPABASE_KEY:
 
 BOT_USERNAME = "@awe5Bot"
 DEV_USERNAME = "@toe7e"
-DEV_ADMIN_ID = 5126968608  # آيدي المطور الرقمي الخاص بك
+DEV_ADMIN_ID = 5126968608  # آيدي المطور الخاص بك
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = message.from_user.id
     username = message.from_user.username or "No Username"
     
-    # حفظ المستخدم في قاعدة بيانات Supabase
     if supabase:
         try:
             supabase.table("users").upsert({"user_id": user_id, "username": username}).execute()
@@ -86,16 +82,18 @@ def admin_panel(message):
 
     bot.reply_to(message, admin_text, parse_mode="Markdown", reply_markup=markup)
 
-# معالجة الروابط والتحميل المباشر
+# معالجة الروابط والتحميل (فيديو، صوت، بصمة)
 @bot.message_handler(func=lambda message: message.text and message.text.strip().startswith("http"))
 def handle_download(message):
     url = message.text.strip()
-    processing_msg = bot.reply_to(message, "⏳ | يرجى الانتظار، جاري التحميل ومعالجة الفيديو...")
+    processing_msg = bot.reply_to(message, "⏳ | يرجى الانتظار، جاري معالجة التحميل...")
 
+    # خيارات تجاوز حماية البوتات في يوتيوب
     ydl_opts = {
-        'format': 'best',
-        'outtmpl': 'downloaded_media.%(ext)s',
+        'format': 'bestvideo+bestaudio/best',
+        'outtmpl': 'media_file.%(ext)s',
         'noplaylist': True,
+        'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
     }
 
     try:
@@ -105,17 +103,19 @@ def handle_download(message):
             
         caption_text = f"• {BOT_USERNAME}."
         
+        # خيارات الأزرار: فيديو، ملف صوتي، بصمة صوتية
         markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton("تحميل كملف صوتي.", callback_data="audio_dl"))
-        markup.add(InlineKeyboardButton("تحميل باعلى دقه HD.", url=url))
+        markup.add(
+            InlineKeyboardButton("🎬 فيديو", callback_data=f"send_vid:{url}"),
+            InlineKeyboardButton("🎵 صوتي", callback_data=f"send_aud:{url}"),
+            InlineKeyboardButton("🎙 بصمة", callback_data=f"send_voice:{url}")
+        )
 
         with open(filename, 'rb') as f:
             if filename.endswith(('.mp4', '.mkv', '.webm', '.mov')):
                 bot.send_video(message.chat.id, f, caption=caption_text, reply_markup=markup)
-            elif filename.endswith(('.mp3', '.m4a', '.wav', '.opus')):
-                bot.send_audio(message.chat.id, f, caption=caption_text, reply_markup=markup)
             else:
-                bot.send_document(message.chat.id, f, caption=caption_text, reply_markup=markup)
+                bot.send_audio(message.chat.id, f, caption=caption_text, reply_markup=markup)
                 
         if os.path.exists(filename):
             os.remove(filename)
@@ -127,12 +127,12 @@ def handle_download(message):
             bot.edit_message_text(
                 chat_id=message.chat.id,
                 message_id=processing_msg.message_id,
-                text=f"❌ عذراً، فشل التحميل. تأكد من أن الرابط عام.\nالخطأ: {str(e)[:100]}"
+                text=f"❌ عذراً، حظر يوتيوب المؤقت مفعل على السيرفر.\nيرجى تحديث مكتبة yt-dlp أو تجربة رابط آخر."
             )
         except:
             pass
 
-# معالجة النصوص العادية والبحث الآمن
+# معالجة البحث بالنصوص
 @bot.message_handler(func=lambda message: message.text and not message.text.startswith("http"))
 def handle_search(message):
     query = message.text.strip()
@@ -143,6 +143,7 @@ def handle_search(message):
             'extract_flat': True,
             'default_search': 'ytsearch5',
             'quiet': True,
+            'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -182,10 +183,10 @@ def handle_search(message):
         bot.edit_message_text(
             chat_id=message.chat.id,
             message_id=processing_msg.message_id,
-            text="❌ حدث خطأ أثناء عملية البحث، حاول مرة أخرى."
+            text="❌ حدث خطأ في محرك البحث بسبب قيود المنصة، جرب إرسال رابط مباشر."
         )
 
-# معالجة الأزرار الشفافة
+# معالجة الأزرار وتحويل الصيغ (فيديو، صوت، بصمة)
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     if call.data == "refresh_stats":
@@ -201,6 +202,40 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, f"📊 عدد المشتركين الحالي: {users_count}")
         else:
             bot.answer_callback_query(call.id, "❌ هذا الزر للمطور فقط", show_alert=True)
+            
+    elif call.data.startswith("send_aud:") or call.data.startswith("send_voice:") or call.data.startswith("send_vid:"):
+        action, url = call.data.split(":", 1)
+        bot.answer_callback_query(call.id, "⏳ جاري تحضير الملف المطلوب...")
+        
+        try:
+            if action == "send_aud":
+                ydl_opts = {'format': 'bestaudio', 'outtmpl': 'audio.%(ext)s'}
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    fname = ydl.prepare_filename(info)
+                with open(fname, 'rb') as af:
+                    bot.send_audio(call.message.chat.id, af, caption=f"• {BOT_USERNAME}")
+                os.remove(fname)
+                
+            elif action == "send_voice":
+                ydl_opts = {'format': 'bestaudio', 'outtmpl': 'voice.%(ext)s', 'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'ogg'}]}
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    fname = ydl.prepare_filename(info).rsplit('.', 1)[0] + '.ogg'
+                with open(fname, 'rb') as vf:
+                    bot.send_voice(call.message.chat.id, vf)
+                os.remove(fname)
+                
+            elif action == "send_vid":
+                ydl_opts = {'format': 'best', 'outtmpl': 'video.%(ext)s'}
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    fname = ydl.prepare_filename(info)
+                with open(fname, 'rb') as vf:
+                    bot.send_video(call.message.chat.id, vf, caption=f"• {BOT_USERNAME}")
+                os.remove(fname)
+        except Exception as ex:
+            bot.send_message(call.message.chat.id, f"❌ حدث خطأ أثناء التحويل: {str(ex)[:60]}")
 
 if __name__ == "__main__":
     print("البوت يعمل بكفاءة تامة...")

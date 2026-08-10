@@ -73,9 +73,9 @@ def admin_panel(message):
     users_count = 0
     if supabase:
         try:
-            response = supabase.table("users").select("user_id", count="exact").execute()
-            if response.count is not None:
-                users_count = response.count
+            response = supabase.table("users").select("user_id").execute()
+            if response.data is not None:
+                users_count = len(response.data)
         except Exception as e:
             print(f"خطأ في جلب عدد المستخدمين: {e}")
 
@@ -248,12 +248,12 @@ def callback_handler(call):
             users_count = 0
             if supabase:
                 try:
-                    res = supabase.table("users").select("user_id", count="exact").execute()
-                    if res.count is not None:
-                        users_count = res.count
+                    res = supabase.table("users").select("user_id").execute()
+                    if res.data is not None:
+                        users_count = len(res.data)
                 except:
                     pass
-            bot.answer_callback_query(call.id, f"📊 عدد المشتركين الحالي: {users_count}")
+            bot.answer_callback_query(call.id, f"📊 عدد المشتركين الحالي: {users_count}", show_alert=True)
         else:
             bot.answer_callback_query(call.id, "❌ هذا الزر للمطور فقط", show_alert=True)
             return

@@ -101,7 +101,6 @@ def admin_panel(message):
     markup = InlineKeyboardMarkup().add(InlineKeyboardButton("📊 تحديث الإحصائيات", callback_data="refresh_stats"))
     bot.reply_to(message, admin_text, parse_mode="Markdown", reply_markup=markup)
 
-# البحث في الخاص
 @bot.message_handler(func=lambda message: message.text and not message.text.startswith("http") and message.text != "🛠 لوحة تحكم المطور" and message.chat.type == 'private')
 def handle_private_search(message):
     query = message.text.strip()
@@ -147,7 +146,6 @@ def handle_private_search(message):
     except Exception as e:
         bot.edit_message_text(f"❌ حدث خطأ في البحث. تأكد من صحة الكلمة.", message.chat.id, msg.message_id)
 
-# الروابط المباشرة
 @bot.message_handler(func=lambda message: message.text and message.text.startswith("http"))
 def handle_direct_link(message):
     url = message.text.strip()
@@ -189,7 +187,7 @@ def callback_handler(call):
     action, vid_id = data.split("_", 1)
     url = f"https://youtu.be/{vid_id}"
     
-    bot.answer_callback_query(call.id, "⏳ جاري التحميل بأقصى سرعة...")
+    bot.answer_callback_query(call.id, "⏳ جاري المعالجة والإرسال...")
     
     file_path = None
     try:
@@ -207,47 +205,27 @@ def callback_handler(call):
                 with open(file_path, 'rb') as f:
                     bot.send_video(call.message.chat.id, f, caption=f"• {BOT_USERNAME}")
                 
-        elif action == "aud":
+        elif action in ["aud", "voi"]:
             ydl_opts = {
-                'format': 'bestaudio/best',
+                'format': 'bestaudio[ext=m4a]/bestaudio',
                 'outtmpl': '%(id)s.%(ext)s',
                 'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
-                'http_headers': COMMON_HEADERS,
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': '192',
-                }]
+                'http_headers': COMMON_HEADERS
             }
             with YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
-                file_path = f"{info.get('id')}.mp3"
+                file_path = ydl.prepare_filename(info)
+            
             if file_path and os.path.exists(file_path):
                 with open(file_path, 'rb') as f:
-                    bot.send_audio(call.message.chat.id, f, performer=BOT_USERNAME, title=info.get('title', 'Audio'), caption=f"• {BOT_USERNAME}")
-                
-        elif action == "voi":
-            ydl_opts = {
-                'format': 'bestaudio/best',
-                'outtmpl': '%(id)s.%(ext)s',
-                'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
-                'http_headers': COMMON_HEADERS,
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'ogg',
-                    'preferredquality': '192',
-                }]
-            }
-            with YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                file_path = f"{info.get('id')}.ogg"
-            if file_path and os.path.exists(file_path):
-                with open(file_path, 'rb') as f:
-                    bot.send_voice(call.message.chat.id, f, caption=f"• {BOT_USERNAME}")
+                    if action == "aud":
+                        bot.send_audio(call.message.chat.id, f, performer=BOT_USERNAME, title=info.get('title', 'Audio'), caption=f"• {BOT_USERNAME}")
+                    else:
+                        bot.send_voice(call.message.chat.id, f, caption=f"• {BOT_USERNAME}")
                 
     except Exception as e:
-        print(f"Error: {e}")
-        bot.send_message(call.message.chat.id, "❌ حدث خطأ أثناء التحميل.")
+        print(f"Error details: {e}")
+        bot.send_message(call.message.chat.id, "❌ حدث خطأ أثناء إرسال الملف.")
     finally:
         if file_path and os.path.exists(file_path):
             try: os.remove(file_path)

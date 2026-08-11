@@ -14,13 +14,13 @@ if not TOKEN:
 
 bot = telebot.TeleBot(TOKEN, threaded=False)
 
-# الاتصال بقاعدة البيانات مع معالجة الأخطاء
+# الاتصال بقاعدة البيانات
 supabase: Client = None
 if SUPABASE_URL and SUPABASE_KEY:
     try:
         supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
     except Exception as e:
-        print(f"Database error: {e}")
+        print(f"خطأ في الاتصال بقاعدة البيانات: {e}")
 
 BOT_USERNAME = "@awe5Bot"
 DEV_USERNAME = "@toe7e"
@@ -36,19 +36,24 @@ def get_users_count():
     try:
         if supabase:
             res = supabase.table("users").select("user_id").execute()
-            return len(res.data) if res.data else 0
+            if res.data is not None:
+                return len(res.data)
     except:
         pass
     return 0
 
 def format_views(views):
-    if not views: return "0"
-    if views >= 1_000_000: return f"{views // 1_000_000}M"
-    if views >= 1_000: return f"{views // 1_000}K"
+    if not views:
+        return "0"
+    if views >= 1_000_000:
+        return f"{views // 1_000_000}M"
+    elif views >= 1_000:
+        return f"{views // 1_000}K"
     return str(views)
 
 def format_duration(seconds):
-    if not seconds: return "0:00"
+    if not seconds:
+        return "0:00"
     m, s = divmod(int(seconds), 60)
     return f"{m}:{s:02d}"
 
@@ -56,136 +61,361 @@ def format_duration(seconds):
 def send_welcome(message):
     user_id = message.from_user.id
     username = message.from_user.username or "No Username"
+    
     if supabase:
         try:
             supabase.table("users").upsert({"user_id": user_id, "username": username}).execute()
-        except:
-            pass
+        except Exception as e:
+            print(f"فشل حفظ المستخدم: {e}")
             
-    welcome_msg = "- أهلاً بك عزيزي المستخدم.\n- أرسل رابط الفيديو أو اسم الأغنية للبحث والتحميل الفوري."
+    welcome_msg = (
+        "- اهلا بك عزيزي المستخدم\n\n"
+        "- لكشف التاك المخفي يرجى ارسال رابط الحساب على الانستكرام او اليوزر \n\n"
+        "- يمكنك من خلالي التحميل من جميع المواقع .\n"
+        "**{ اليك المواقع المدعومه }** ،\n"
+        "يوتيوب ، انستكرام ، فيسبوك ، تيك توك ، لايكي ، كواي ، ساوندكلاود ، بينترست ، سنابشات ، سبوتيفاي ، ثريدز .\n\n"
+        "- للتحميل من اي موقع .\n"
+        "ارسل - رابط الفيديو - او يوزر الحساب او كلمه ."
+    )
+    
     markup = InlineKeyboardMarkup()
     markup.add(
         InlineKeyboardButton("🤖 البوت", url=f"https://t.me/{BOT_USERNAME.replace('@','')}"),
         InlineKeyboardButton("💻 المطور", url=f"https://t.me/{DEV_USERNAME.replace('@','')}")
     )
+       
     if user_id == DEV_ADMIN_ID:
-        bot.send_message(message.chat.id, "أهلاً بك يا مطور البوت، تم تفعيل لوحة التحكم.", reply_markup=get_admin_keyboard())
+        bot.send_message(message.chat.id, "أهلاً بك يا مطور البوت، تم تفعيل لوحة التحكم بنجاح.", reply_markup=get_admin_keyboard())
+    
     bot.reply_to(message, welcome_msg, parse_mode="Markdown", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == "🛠 لوحة تحكم المطور" or message.text in ['/admin', '/control'])
 def admin_panel(message):
     if message.from_user.id != DEV_ADMIN_ID:
-        bot.reply_to(message, "❌ عذراً، هذا الأمر للمطور فقط.")
+        bot.reply_to(message, "❌ عذراً، هذا الأمر مخصص للمطور فقط.")
         return
+
     users_count = get_users_count()
-    admin_text = f"🛠 **لوحة تحكم المطور**\n\n👥 عدد المشتركين: `{users_count}` مشترك\nحالة قاعدة البيانات: `متصلة ✅`"
+
+    admin_text = (
+        f"🛠 **لوحة تحكم المطور**\n\n"
+        f"👥 **إحصائيات البوت:**\n"
+        f"• عدد المشتركين الكلي: `{users_count}` مشترك\n"
+        f"• حالة قاعدة البيانات: `متصلة بنجاح ✅`\n\n"
+        f"اختر أحد الإجراءات أدناه:"
+    )
+
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("📊 تحديث الإحصائيات", callback_data="refresh_stats"))
+
     bot.reply_to(message, admin_text, parse_mode="Markdown", reply_markup=markup)
 
-# البحث باستخدام yt-dlp (سريع ومضمون 100%)
+# البحث السريع في المجموعات والقنوات (عند كتابة: يوت + اسم الكلمة)
+@bot.message_handler(func=lambda message: message.text and message.text.startswith("يوت ") and message.chat.type in ['group', 'supergroup', 'channel'])
+def handle_group_channel_search(message):
+    query = message.text.replace("يوت ", "", 1).strip()
+    processing_msg = bot.reply_to(message, f"🔍 | جاري البحث والتحميل الفوري لـ: ({query}) ...")
+    
+    thumb_file = None
+    file_path = None
+    try:
+        ydl_opts = {
+            'quiet': True,
+            'default_search': 'ytsearch1',
+            'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
+        }
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(query, download=False)
+            entries = info.get('entries', [])
+            if not entries:
+                bot.edit_message_text(chat_id=message.chat.id, message_id=processing_msg.message_id, text="❌ لم يتم العثور على نتيجة.")
+                return
+            vid_info = entries[0]
+            vid_id = vid_info.get('id')
+            title = vid_info.get('title')
+
+        safe_title = "".join([c for c in title if c.isalnum() or c.isspace()]).strip() or "media"
+        
+        thumb_res = requests.get(FIXED_THUMB_URL)
+        if thumb_res.status_code == 200:
+            thumb_file = f"fixed_thumb_{vid_id}.jpg"
+            with open(thumb_file, 'wb') as tf:
+                tf.write(thumb_res.content)
+
+        dl_opts = {
+            'format': 'bestaudio',
+            'outtmpl': '%(id)s.%(ext)s',
+            'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}],
+            'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
+        }
+        with YoutubeDL(dl_opts) as ydl:
+            file_path = f"{vid_id}.mp3"
+            ydl.download([f"https://youtu.be/{vid_id}"])
+            
+        if file_path and os.path.exists(file_path):
+            with open(file_path, 'rb') as f:
+                thumb_data = open(thumb_file, 'rb') if thumb_file and os.path.exists(thumb_file) else None
+                bot.send_audio(
+                    message.chat.id, 
+                    f, 
+                    performer=BOT_USERNAME, 
+                    title=title, 
+                    caption=f"• {BOT_USERNAME}",
+                    thumb=thumb_data
+                )
+            
+        try:
+            bot.delete_message(message.chat.id, processing_msg.message_id)
+        except:
+            pass
+            
+    except Exception as e:
+        try:
+            bot.edit_message_text(chat_id=message.chat.id, message_id=processing_msg.message_id, text="❌ حدث خطأ أثناء جلب الطلب.")
+        except:
+            pass
+    finally:
+        if file_path and os.path.exists(file_path):
+            try: os.remove(file_path)
+            except: pass
+        if thumb_file and os.path.exists(thumb_file):
+            try: os.remove(thumb_file)
+            except: pass
+
+# البحث الكامل في الخاص مع تجاوز الحظر عبر yt-dlp
 @bot.message_handler(func=lambda message: message.text and not message.text.startswith("http") and message.text != "🛠 لوحة تحكم المطور" and message.chat.type == 'private')
 def handle_private_search(message):
     query = message.text.strip()
-    msg = bot.reply_to(message, f"🔍 | جاري البحث عن: ({query}) ...")
+    processing_msg = bot.reply_to(message, f"🔍 | جاري البحث عن: ({query}) ...")
     
     try:
-        ydl_opts = {'quiet': True, 'extract_flat': True, 'default_search': 'ytsearch5'}
+        ydl_opts = {
+            'quiet': True,
+            'extract_flat': True,
+            'default_search': 'ytsearch5',
+            'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
+        }
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(query, download=False)
             results = info.get('entries', [])
-            
+        
         if not results:
-            bot.edit_message_text("❌ لم يتم العثور على نتائج بحث.", message.chat.id, msg.message_id)
+            bot.edit_message_text(chat_id=message.chat.id, message_id=processing_msg.message_id, text="❌ لم يتم العثور على نتائج بحث.")
             return
 
-        response_text = f"🔍 **نتائج البحث لـ \"{query}\"**\n\n"
+        response_text = f"🔍 **نتائج بحث اليوتيوب لـ \"{query}\"**\n\n"
         markup = InlineKeyboardMarkup()
         
-        for idx, entry in enumerate(results, 1):
-            title = entry.get('title', 'Unknown')
-            vid_id = entry.get('id')
-            duration = format_duration(entry.get('duration'))
-            views = format_views(entry.get('view_count'))
+        for idx, vid in enumerate(results, 1):
+            vid_title = vid.get('title', 'Unknown')
+            vid_id = vid.get('id')
+            duration = format_duration(vid.get('duration'))
+            views = format_views(vid.get('view_count'))
+            channel_name = vid.get('uploader', 'YouTube')
             
-            response_text += f"{idx}️⃣ 🎬 {title}\n⏱ {duration} - 👁 {views}\n\n"
+            response_text += f"{idx}️⃣ 🎬 {vid_title}\n👤 {channel_name}\n⏱ {duration} - 👁 {views}\n\n"
+            
             markup.add(
                 InlineKeyboardButton(f"[{idx}] 🎬 فيديو", callback_data=f"vid_{vid_id}"),
-                InlineKeyboardButton(f"[{idx}] 🎵 صوتي", callback_data=f"aud_{vid_id}")
+                InlineKeyboardButton(f"[{idx}] 🎵 صوتي", callback_data=f"aud_{vid_id}"),
+                InlineKeyboardButton(f"[{idx}] 🎤 بصمة", callback_data=f"voi_{vid_id}")
             )
 
-        bot.delete_message(message.chat.id, msg.message_id)
+        markup.add(InlineKeyboardButton("التالي ➡️", callback_data=f"more_{query[:20]}"))
+
+        try:
+            bot.delete_message(message.chat.id, processing_msg.message_id)
+        except:
+            pass
+
         bot.send_message(message.chat.id, response_text, parse_mode="Markdown", reply_markup=markup)
         
     except Exception as e:
-        bot.edit_message_text(f"❌ حدث خطأ في البحث: تأكد من صحة الكلمة.", message.chat.id, msg.message_id)
+        try:
+            bot.edit_message_text(chat_id=message.chat.id, message_id=processing_msg.message_id, text="❌ حدث خطأ في البحث. تأكد من صحة الكلمة.")
+        except:
+            pass
 
-# استقبال الروابط المباشرة
+# استقبال الروابط المباشرة في الخاص
 @bot.message_handler(func=lambda message: message.text and message.text.startswith("http"))
 def handle_direct_link(message):
     url = message.text.strip()
     try:
-        ydl_opts = {'quiet': True}
+        ydl_opts = {
+            'quiet': True,
+            'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
+        }
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             vid_id = info.get('id')
             title = info.get('title')
             duration = format_duration(info.get('duration'))
             views = format_views(info.get('view_count'))
-            
-        caption = f"🎬 {title}\n⏱ {duration} - 👁 {views}"
-        markup = InlineKeyboardMarkup().add(
-            InlineKeyboardButton("🎬 مقطع فيديو", callback_data=f"vid_{vid_id}"),
-            InlineKeyboardButton("🎵 ملف صوتي", callback_data=f"aud_{vid_id}")
+        
+        caption = f"🎬 {title}\n👤 {BOT_USERNAME}\n⏱ {duration} - 👁 {views}"
+        
+        markup = InlineKeyboardMarkup(row_width=3)
+        markup.add(
+            InlineKeyboardButton("🎬 مقطع فيديو.", callback_data=f"vid_{vid_id}"),
+            InlineKeyboardButton("🎵 ملف صوتي.", callback_data=f"aud_{vid_id}"),
+            InlineKeyboardButton("🎤 بصمة صوتية.", callback_data=f"voi_{vid_id}")
         )
+        
         bot.send_photo(message.chat.id, FIXED_THUMB_URL, caption=caption, reply_markup=markup)
+            
     except Exception as e:
-        bot.reply_to(message, "❌ تعذر جلب معلومات الفيديو من الرابط.")
+        bot.reply_to(message, f"❌ تعذر جلب معلومات الفيديو من الرابط.")
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     if call.data == "refresh_stats":
         if call.from_user.id != DEV_ADMIN_ID:
-            bot.answer_callback_query(call.id, "❌ للمطور فقط", show_alert=True)
+            bot.answer_callback_query(call.id, "❌ هذا الزر للمطور فقط", show_alert=True)
             return
-        count = get_users_count()
-        bot.answer_callback_query(call.id, f"📊 عدد المشتركين: {count}")
+            
+        users_count = get_users_count()
+        updated_text = (
+            f"🛠 **لوحة تحكم المطور**\n\n"
+            f"👥 **إحصائيات البوت:**\n"
+            f"• عدد المشتركين الكلي: `{users_count}` مشترك\n"
+            f"• حالة قاعدة البيانات: `متصلة بنجاح ✅`\n\n"
+            f"اختر أحد الإجراءات أدناه:"
+        )
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("📊 تحديث الإحصائيات", callback_data="refresh_stats"))
+        
+        try:
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text=updated_text,
+                parse_mode="Markdown",
+                reply_markup=markup
+            )
+            bot.answer_callback_query(call.id, "✅ تم تحديث الإحصائيات بنجاح")
+        except Exception:
+            bot.answer_callback_query(call.id, f"📊 عدد المشتركين الحالي: {users_count}")
+        return
+
+    if call.data.startswith("more_"):
+        bot.answer_callback_query(call.id, "🔍 جاري جلب المزيد من النتائج...")
+        query = call.data.replace("more_", "")
+        try:
+            ydl_opts = {
+                'quiet': True,
+                'extract_flat': True,
+                'default_search': 'ytsearch10',
+                'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
+            }
+            with YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(query, download=False)
+                results = info.get('entries', [])[5:10]
+                
+            if not results:
+                bot.answer_callback_query(call.id, "❌ لا توجد نتائج أخرى.", show_alert=True)
+                return
+
+            response_text = f"🔍 **المزيد من نتائج بحث اليوتيوب لـ \"{query}\"**\n\n"
+            markup = InlineKeyboardMarkup()
+            
+            for idx, vid in enumerate(results, 6):
+                vid_title = vid.get('title', 'Unknown')
+                vid_id = vid.get('id')
+                duration = format_duration(vid.get('duration'))
+                views = format_views(vid.get('view_count'))
+                channel_name = vid.get('uploader', 'YouTube')
+                
+                response_text += f"{idx}️⃣ 🎬 {vid_title}\n👤 {channel_name}\n⏱ {duration} - 👁 {views}\n\n"
+                markup.add(
+                    InlineKeyboardButton(f"[{idx}] 🎬 فيديو", callback_data=f"vid_{vid_id}"),
+                    InlineKeyboardButton(f"[{idx}] 🎵 صوتي", callback_data=f"aud_{vid_id}"),
+                    InlineKeyboardButton(f"[{idx}] 🎤 بصمة", callback_data=f"voi_{vid_id}")
+                )
+
+            bot.send_message(call.message.chat.id, response_text, parse_mode="Markdown", reply_markup=markup)
+        except:
+            bot.answer_callback_query(call.id, "❌ حدث خطأ أثناء جلب الصفحة التالية.", show_alert=True)
         return
 
     data = call.data
-    if "_" not in data:
+    parts = data.split("_", 1)
+    if len(parts) != 2:
         return
         
-    action, vid_id = data.split("_", 1)
+    action, vid_id = parts[0], parts[1]
     url = f"https://youtu.be/{vid_id}"
-    bot.answer_callback_query(call.id, "⏳ جاري التحميل والإرسال...")
     
+    bot.answer_callback_query(call.id, "⏳ جاري التحميل بأقصى سرعة...")
+    
+    thumb_file = None
     file_path = None
     try:
+        thumb_res = requests.get(FIXED_THUMB_URL)
+        if thumb_res.status_code == 200:
+            thumb_file = f"fixed_thumb_{vid_id}.jpg"
+            with open(thumb_file, 'wb') as tf:
+                tf.write(thumb_res.content)
+
         if action == "vid":
-            ydl_opts = {'format': 'best[ext=mp4]/best', 'outtmpl': '%(id)s.%(ext)s'}
+            ydl_opts = {
+                'format': 'best[ext=mp4]/best',
+                'outtmpl': '%(id)s.%(ext)s',
+                'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
+            }
             with YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 file_path = ydl.prepare_filename(info)
             if file_path and os.path.exists(file_path):
                 with open(file_path, 'rb') as f:
                     bot.send_video(call.message.chat.id, f, caption=f"• {BOT_USERNAME}")
+                
         elif action == "aud":
-            ydl_opts = {'format': 'bestaudio', 'outtmpl': '%(id)s.%(ext)s', 'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]}
+            ydl_opts = {
+                'format': 'bestaudio',
+                'outtmpl': '%(id)s.%(ext)s',
+                'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}],
+                'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
+            }
             with YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
-                file_path = f"{info.get('id')}.mp3"
+                file_path = f"{vid_id}.mp3"
             if file_path and os.path.exists(file_path):
                 with open(file_path, 'rb') as f:
-                    bot.send_audio(call.message.chat.id, f, title=info.get('title'), performer=BOT_USERNAME, caption=f"• {BOT_USERNAME}")
+                    thumb_data = open(thumb_file, 'rb') if thumb_file and os.path.exists(thumb_file) else None
+                    bot.send_audio(
+                        call.message.chat.id, 
+                        f, 
+                        performer=BOT_USERNAME, 
+                        title=info.get('title', 'Audio'), 
+                        caption=f"• {BOT_USERNAME}",
+                        thumb=thumb_data
+                    )
+                
+        elif action == "voi":
+            ydl_opts = {
+                'format': 'bestaudio',
+                'outtmpl': '%(id)s.%(ext)s',
+                'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'ogg', 'preferredquality': '192'}],
+                'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
+            }
+            with YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                file_path = f"{vid_id}.ogg"
+            if file_path and os.path.exists(file_path):
+                with open(file_path, 'rb') as f:
+                    bot.send_voice(call.message.chat.id, f, caption=f"• {BOT_USERNAME}")
+                
     except Exception as e:
-        bot.send_message(call.message.chat.id, "❌ حدث خطأ أثناء التحميل.")
+        bot.send_message(call.message.chat.id, f"❌ حدث خطأ أثناء التحميل.")
     finally:
         if file_path and os.path.exists(file_path):
             try: os.remove(file_path)
             except: pass
+        if thumb_file and os.path.exists(thumb_file):
+            try: os.remove(thumb_file)
+            except: pass
 
 if __name__ == "__main__":
-    bot.remove_webhook() # يحل مشكلة 409 Conflict نهائياً
-    print("البوت يعمل الآن بكفاءة وبدون أخطاء...")
+    bot.remove_webhook()
+    print("البوت يعمل بكامل الميزات وبدون أخطاء...")
     bot.infinity_polling(skip_pending=True)

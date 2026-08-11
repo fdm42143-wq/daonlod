@@ -1,3 +1,0 @@
-pyTelegramBotAPI>=4.28.0
-yt-dlp>=2026.7.21
-Telethon>=1.40.0

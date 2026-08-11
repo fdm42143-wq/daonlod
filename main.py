@@ -26,6 +26,10 @@ DEV_USERNAME = "@toe7e"
 DEV_ADMIN_ID = 5126968608
 FIXED_THUMB_URL = "https://raw.githubusercontent.com/fdm42143-wq/daonlod/main/7bcc85a8907b306cede0cfd79d5af741.jpg"
 
+COMMON_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+}
+
 def get_admin_keyboard():
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(KeyboardButton("🛠 لوحة تحكم المطور"))
@@ -93,7 +97,8 @@ def handle_private_search(message):
             'quiet': True,
             'extract_flat': False,
             'default_search': 'ytsearch5',
-            'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
+            'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
+            'http_headers': COMMON_HEADERS
         }
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(query, download=False)
@@ -132,7 +137,11 @@ def handle_private_search(message):
 def handle_direct_link(message):
     url = message.text.strip()
     try:
-        ydl_opts = {'quiet': True, 'extractor_args': {'youtube': {'player_client': ['android', 'web']}}}
+        ydl_opts = {
+            'quiet': True,
+            'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
+            'http_headers': COMMON_HEADERS
+        }
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             vid_id = info.get('id')
@@ -173,7 +182,8 @@ def callback_handler(call):
             ydl_opts = {
                 'format': 'best',
                 'outtmpl': '%(id)s.%(ext)s',
-                'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
+                'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
+                'http_headers': COMMON_HEADERS
             }
             with YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
@@ -186,7 +196,8 @@ def callback_handler(call):
             ydl_opts = {
                 'format': 'bestaudio',
                 'outtmpl': '%(id)s.%(ext)s',
-                'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
+                'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
+                'http_headers': COMMON_HEADERS
             }
             with YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
@@ -199,7 +210,8 @@ def callback_handler(call):
             ydl_opts = {
                 'format': 'bestaudio',
                 'outtmpl': '%(id)s.%(ext)s',
-                'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
+                'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
+                'http_headers': COMMON_HEADERS
             }
             with YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)

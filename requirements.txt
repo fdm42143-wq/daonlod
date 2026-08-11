@@ -1,4 +1,4 @@
-pyTelegramBotAPI==4.14.0
-pytubefix==8.5.1
-supabase==2.3.0
-requests==2.31.0
+pyTelegramBotAPI
+yt-dlp
+supabase
+requests

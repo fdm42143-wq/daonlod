@@ -189,7 +189,7 @@ def callback_handler(call):
     action, vid_id = data.split("_", 1)
     url = f"https://youtu.be/{vid_id}"
     
-    bot.answer_callback_query(call.id, "⏳ جاري التحميل والإرسال...")
+    bot.answer_callback_query(call.id, "⏳ جاري التحميل بأقصى سرعة...")
     
     file_path = None
     try:
@@ -207,26 +207,46 @@ def callback_handler(call):
                 with open(file_path, 'rb') as f:
                     bot.send_video(call.message.chat.id, f, caption=f"• {BOT_USERNAME}")
                 
-        elif action in ["aud", "voi"]:
+        elif action == "aud":
             ydl_opts = {
-                'format': 'bestaudio[ext=m4a]/bestaudio',
+                'format': 'bestaudio/best',
                 'outtmpl': '%(id)s.%(ext)s',
                 'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
-                'http_headers': COMMON_HEADERS
+                'http_headers': COMMON_HEADERS,
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                    'preferredquality': '192',
+                }]
             }
             with YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
-                file_path = ydl.prepare_filename(info)
-            
+                file_path = f"{info.get('id')}.mp3"
             if file_path and os.path.exists(file_path):
                 with open(file_path, 'rb') as f:
-                    if action == "aud":
-                        bot.send_audio(call.message.chat.id, f, performer=BOT_USERNAME, title=info.get('title', 'Audio'), caption=f"• {BOT_USERNAME}")
-                    else:
-                        bot.send_voice(call.message.chat.id, f, caption=f"• {BOT_USERNAME}")
+                    bot.send_audio(call.message.chat.id, f, performer=BOT_USERNAME, title=info.get('title', 'Audio'), caption=f"• {BOT_USERNAME}")
+                
+        elif action == "voi":
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'outtmpl': '%(id)s.%(ext)s',
+                'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
+                'http_headers': COMMON_HEADERS,
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'ogg',
+                    'preferredquality': '192',
+                }]
+            }
+            with YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                file_path = f"{info.get('id')}.ogg"
+            if file_path and os.path.exists(file_path):
+                with open(file_path, 'rb') as f:
+                    bot.send_voice(call.message.chat.id, f, caption=f"• {BOT_USERNAME}")
                 
     except Exception as e:
-        print(f"Error details: {e}")
+        print(f"Error: {e}")
         bot.send_message(call.message.chat.id, "❌ حدث خطأ أثناء التحميل.")
     finally:
         if file_path and os.path.exists(file_path):

@@ -1,4 +1,3 @@
-pyTelegramBotAPI>=4.36.0
-yt-dlp
+pyTelegramBotAPI
+yt-dlp[default]
 supabase
-Telethon>=1.44.0

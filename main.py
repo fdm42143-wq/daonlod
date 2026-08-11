@@ -19,7 +19,7 @@ if SUPABASE_URL and SUPABASE_KEY:
     try:
         supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
     except Exception as e:
-        print(f"Database error: {e}")
+        print(f"خطأ في الاتصال بقاعدة البيانات: {e}")
 
 BOT_USERNAME = "@awe5Bot"
 DEV_USERNAME = "@toe7e"
@@ -38,9 +38,9 @@ def get_admin_keyboard():
 def get_users_count():
     try:
         if supabase:
-            res = supabase.table("users").select("user_id").execute()
-            if res.data is not None:
-                return len(res.data)
+            res = supabase.table("users").select("user_id", count="exact").execute()
+            if res.count is not None:
+                return res.count
     except:
         pass
     return 0
@@ -66,23 +66,38 @@ def send_welcome(message):
         except:
             pass
             
-    welcome_msg = "- أهلاً بك عزيزي المستخدم.\n- أرسل اسم الأغنية أو رابط الفيديو للبحث والتحميل الفوري."
+    welcome_msg = (
+        "- اهلا بك عزيزي المستخدم\n\n"
+        "- لكشف التاك المخفي يرجى ارسال رابط الحساب على الانستكرام او اليوزر \n\n"
+        "- يمكنك من خلالي التحميل من جميع المواقع .\n"
+        "**{ اليك المواقع المدعومه }** ،\n"
+        "يوتيوب ، انستكرام ، فيسبوك ، تيك توك ، لايكي ، كواي ، ساوندكلاود ، بينترست ، سنابشات ، سبوتيفاي ، ثريدز .\n\n"
+        "- للتحميل من اي موقع .\n"
+        "ارسل - رابط الفيديو - او يوزر الحساب او كلمه ."
+    )
+    
     markup = InlineKeyboardMarkup()
     markup.add(
         InlineKeyboardButton("🤖 البوت", url=f"https://t.me/{BOT_USERNAME.replace('@','')}"),
         InlineKeyboardButton("💻 المطور", url=f"https://t.me/{DEV_USERNAME.replace('@','')}")
     )
     if user_id == DEV_ADMIN_ID:
-        bot.send_message(message.chat.id, "أهلاً بك يا مطور البوت، تم تفعيل لوحة التحكم.", reply_markup=get_admin_keyboard())
-    bot.reply_to(message, welcome_msg, reply_markup=markup)
+        bot.send_message(message.chat.id, "أهلاً بك يا مطور البوت، تم تفعيل لوحة التحكم بنجاح.", reply_markup=get_admin_keyboard())
+    bot.reply_to(message, welcome_msg, parse_mode="Markdown", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == "🛠 لوحة تحكم المطور" or message.text in ['/admin', '/control'])
 def admin_panel(message):
     if message.from_user.id != DEV_ADMIN_ID:
-        bot.reply_to(message, "❌ عذراً، هذا الأمر للمطور فقط.")
+        bot.reply_to(message, "❌ عذراً، هذا الأمر مخصص للمطور فقط.")
         return
     users_count = get_users_count()
-    admin_text = f"🛠 **لوحة تحكم المطور**\n\n👥 المشتركين: `{users_count}`\nحالة القاعدة: `متصلة ✅`"
+    admin_text = (
+        f"🛠 **لوحة تحكم المطور**\n\n"
+        f"👥 **إحصائيات البوت:**\n"
+        f"• عدد المشتركين الكلي: `{users_count}` مشترك\n"
+        f"• حالة قاعدة البيانات: `متصلة بنجاح ✅`\n\n"
+        f"اختر أحد الإجراءات أدناه:"
+    )
     markup = InlineKeyboardMarkup().add(InlineKeyboardButton("📊 تحديث الإحصائيات", callback_data="refresh_stats"))
     bot.reply_to(message, admin_text, parse_mode="Markdown", reply_markup=markup)
 
@@ -163,10 +178,10 @@ def handle_direct_link(message):
 def callback_handler(call):
     if call.data == "refresh_stats":
         if call.from_user.id != DEV_ADMIN_ID:
-            bot.answer_callback_query(call.id, "❌ للمطور فقط", show_alert=True)
+            bot.answer_callback_query(call.id, "❌ هذا الزر للمطور فقط", show_alert=True)
             return
         count = get_users_count()
-        bot.answer_callback_query(call.id, f"📊 المشتركين: {count}")
+        bot.answer_callback_query(call.id, f"📊 عدد المشتركين الحالي: {count}")
         return
 
     data = call.data
@@ -174,7 +189,7 @@ def callback_handler(call):
     action, vid_id = data.split("_", 1)
     url = f"https://youtu.be/{vid_id}"
     
-    bot.answer_callback_query(call.id, "⏳ جاري التحميل والإرسال...")
+    bot.answer_callback_query(call.id, "⏳ جاري التحميل بأقصى سرعة...")
     
     file_path = None
     try:
@@ -194,28 +209,38 @@ def callback_handler(call):
                 
         elif action == "aud":
             ydl_opts = {
-                'format': 'bestaudio',
+                'format': 'bestaudio/best',
                 'outtmpl': '%(id)s.%(ext)s',
                 'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
-                'http_headers': COMMON_HEADERS
+                'http_headers': COMMON_HEADERS,
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                    'preferredquality': '192',
+                }]
             }
             with YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
-                file_path = ydl.prepare_filename(info)
+                file_path = f"{info.get('id')}.mp3"
             if file_path and os.path.exists(file_path):
                 with open(file_path, 'rb') as f:
                     bot.send_audio(call.message.chat.id, f, performer=BOT_USERNAME, title=info.get('title', 'Audio'), caption=f"• {BOT_USERNAME}")
                 
         elif action == "voi":
             ydl_opts = {
-                'format': 'bestaudio',
+                'format': 'bestaudio/best',
                 'outtmpl': '%(id)s.%(ext)s',
                 'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
-                'http_headers': COMMON_HEADERS
+                'http_headers': COMMON_HEADERS,
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'ogg',
+                    'preferredquality': '192',
+                }]
             }
             with YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
-                file_path = ydl.prepare_filename(info)
+                file_path = f"{info.get('id')}.ogg"
             if file_path and os.path.exists(file_path):
                 with open(file_path, 'rb') as f:
                     bot.send_voice(call.message.chat.id, f, caption=f"• {BOT_USERNAME}")
@@ -228,6 +253,5 @@ def callback_handler(call):
             except: pass
 
 if __name__ == "__main__":
-    bot.remove_webhook()
     print("البوت يعمل بكامل الميزات وبدون أخطاء...")
     bot.infinity_polling(skip_pending=True)

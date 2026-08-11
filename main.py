@@ -291,5 +291,3 @@ def save_user(user):
 
         return False
 
-
-def
